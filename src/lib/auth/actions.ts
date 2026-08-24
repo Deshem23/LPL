@@ -41,21 +41,46 @@ export async function loginWithEmail(email: string, password: string) {
   // JWT's user_metadata - the metadata is only set at signup and can
   // drift out of sync with an admin-changed role (see updateUser() in
   // user-service.ts), so it's read here as a fallback only.
-  const { data: profile } = await supabase
-    .from('users')
-    .select('role, must_change_password')
-    .eq('id', data.user.id)
-    .single();
+  //
+  // Everything in this block is best-effort personalization of WHERE to
+  // send the user - it must never be able to turn a password that was
+  // already verified above into a silent failure. Previously, any thrown
+  // error here (a transient network blip talking to Postgres, an RLS
+  // policy denying the read, etc.) propagated straight out of this Server
+  // Action uncaught - Next.js sanitizes that into a generic, undebuggable
+  // error in production, and depending on exactly how/when it throws
+  // relative to the redirect() call below, the net effect in the browser
+  // can look like nothing happened at all. console.error below at least
+  // puts the real cause in Vercel's function logs; the catch falls back
+  // to the safest default (role 'contributor') instead of leaving the
+  // user stuck with no explanation.
+  let redirectTo = getDashboardPath('contributor');
+  let role = data.user.user_metadata?.role || 'contributor';
+  try {
+    const { data: profile, error: profileError } = await supabase
+      .from('users')
+      .select('role, must_change_password')
+      .eq('id', data.user.id)
+      .single();
 
-  const role = profile?.role || data.user.user_metadata?.role || 'contributor';
+    if (profileError) {
+      console.error('loginWithEmail: profile lookup failed for', data.user.id, profileError);
+    }
 
-  // Keep the JWT's role claim in sync so middleware's role-based route
-  // gating doesn't lag behind an admin-made role change.
-  if (profile?.role && profile.role !== data.user.user_metadata?.role) {
-    await supabase.auth.updateUser({ data: { role: profile.role } }).catch(() => {});
+    role = profile?.role || data.user.user_metadata?.role || 'contributor';
+
+    // Keep the JWT's role claim in sync so middleware's role-based route
+    // gating doesn't lag behind an admin-made role change.
+    if (profile?.role && profile.role !== data.user.user_metadata?.role) {
+      await supabase.auth.updateUser({ data: { role: profile.role } }).catch((err) => {
+        console.error('loginWithEmail: role resync failed for', data.user.id, err);
+      });
+    }
+
+    redirectTo = profile?.must_change_password ? '/complete-profile' : getDashboardPath(role);
+  } catch (err) {
+    console.error('loginWithEmail: post-auth profile lookup threw for', data.user.id, err);
   }
-
-  const redirectTo = profile?.must_change_password ? '/complete-profile' : getDashboardPath(role);
 
   // This is the login path the actual login form uses (login-form.tsx
   // calls this Server Action directly) - the separate /api/auth/login
