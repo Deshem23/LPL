@@ -50,3 +50,4 @@ yarn-error.log*
 # the deployed app.
 scan-ad-media.mjs
 fix-ad-media.mjs
+_stale_git_locks/

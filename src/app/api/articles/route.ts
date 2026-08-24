@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createArticle, getArticles, updateArticle, deleteArticle } from '@/lib/services/article-service';
-import { getCurrentUser } from '@/lib/auth/actions';
+import { getCurrentUserWithRole } from '@/lib/auth/actions';
 import { logAction } from '@/lib/services/audit-service';
 
 // Always fetch fresh from the DB - a GET route handler with no
@@ -43,13 +43,14 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
+    const auth = await getCurrentUserWithRole();
+    if (!auth) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
+    const { user, role } = auth;
 
     const body = await request.json();
 
@@ -59,7 +60,13 @@ export async function POST(request: Request) {
     // only restriction is trivial to bypass with a direct API call. Force
     // authorship to the actual caller and drop the editorial flags
     // entirely for those two roles, same restriction as article-form.tsx.
-    const role = user.user_metadata?.role || 'contributor';
+    //
+    // role here is DB-authoritative (public.users, via
+    // getCurrentUserWithRole()) rather than the session JWT's
+    // user_metadata.role - using the JWT claim meant a just-demoted
+    // editor/admin whose token hadn't refreshed yet could still pass this
+    // check and set editorial flags/arbitrary authorship after losing the
+    // role that should allow it.
     if (role === 'writer' || role === 'contributor') {
       body.author_id = user.id;
       delete body.is_breaking;

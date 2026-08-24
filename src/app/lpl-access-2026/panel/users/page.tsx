@@ -102,6 +102,7 @@ export default function AdminUsersPage() {
     avatar_url: '',
   });
   const [uploadingEditAvatar, setUploadingEditAvatar] = useState(false);
+  const [uploadingNewUserAvatar, setUploadingNewUserAvatar] = useState(false);
   const [newUser, setNewUser] = useState({
     email: '',
     name: '',
@@ -322,12 +323,34 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleNewUserAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Same fix as handleEditAvatarUpload above (real Storage upload via
+  // /api/media/upload instead of embedding a base64 data: URI directly
+  // in the avatar_url column) - this was the one remaining spot still
+  // using the old pattern, per that function's comment.
+  const handleNewUserAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => setNewUser((prev) => ({ ...prev, avatar_url: event.target?.result as string }));
-    reader.readAsDataURL(file);
+    setUploadingNewUserAvatar(true);
+    try {
+      const body = new FormData();
+      body.append('files', file);
+      body.append('type', 'avatar');
+      const res = await fetch('/api/media/upload', { method: 'POST', body });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok || !result.media?.[0]?.url) {
+        throw new Error(result.error || "Échec du téléversement de l'image.");
+      }
+      setNewUser((prev) => ({ ...prev, avatar_url: result.media[0].url }));
+    } catch (error: any) {
+      toast({
+        title: 'Erreur',
+        description: error.message || "Impossible de téléverser cette image.",
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingNewUserAvatar(false);
+    }
   };
 
   const filteredUsers = users.filter(user => {
@@ -819,13 +842,18 @@ export default function AdminUsersPage() {
                     htmlFor="new-user-avatar-upload"
                     className="absolute -bottom-1 -right-1 p-1.5 bg-primary rounded-full text-white cursor-pointer hover:bg-primary/90 transition-colors"
                   >
-                    <Upload className="h-3 w-3" />
+                    {uploadingNewUserAvatar ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Upload className="h-3 w-3" />
+                    )}
                   </label>
                   <input
                     id="new-user-avatar-upload"
                     type="file"
                     accept="image/*"
                     className="hidden"
+                    disabled={uploadingNewUserAvatar}
                     onChange={handleNewUserAvatarUpload}
                   />
                 </div>

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getArticleById, updateArticle, deleteArticle } from '@/lib/services/article-service';
-import { getCurrentUser } from '@/lib/auth/actions';
+import { getCurrentUserWithRole } from '@/lib/auth/actions';
+import { requirePermission } from '@/lib/auth/require-permission';
 import { logAction } from '@/lib/services/audit-service';
 
 // Always fetch fresh from the DB - a GET route handler with no
@@ -31,10 +32,11 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
+    const auth = await getCurrentUserWithRole();
+    if (!auth) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const { user, role } = auth;
 
     const body = await request.json();
 
@@ -44,7 +46,9 @@ export async function PUT(
     // in. Deleting the keys (rather than forcing them false) leaves
     // whatever an admin/editor already set untouched - updateArticle only
     // writes columns actually present in the body.
-    const role = user.user_metadata?.role || 'contributor';
+    //
+    // role is DB-authoritative here (see the matching comment in
+    // POST /api/articles) rather than the JWT's user_metadata.role.
     if (role === 'writer' || role === 'contributor') {
       delete body.author_id;
       delete body.is_breaking;
@@ -78,10 +82,14 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    // Was only checking "is someone logged in", not "is this someone
+    // allowed to delete articles" - any authenticated writer/contributor
+    // could delete ANY article (not just their own) via a direct DELETE
+    // call, even though the admin UI never shows them a delete button.
+    // canDeleteArticle is admin/editor only (see permissions.ts).
+    const auth = await requirePermission('canDeleteArticle');
+    if (auth instanceof NextResponse) return auth;
+    const { user } = auth;
 
     // Fetch the title before deleting - once the row is gone there's
     // nothing left to describe the audit entry with.

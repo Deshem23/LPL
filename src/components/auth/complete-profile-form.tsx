@@ -51,6 +51,7 @@ export function CompleteProfileForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [avatarPreview, setAvatarPreview] = useState('');
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   // True when an admin already filled in the author profile fields at
   // account-creation time (see the "Author profile" section of the
   // create-user dialog in admin/users/page.tsx). In that case this page
@@ -111,12 +112,35 @@ export function CompleteProfileForm() {
     };
   }, [form]);
 
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Real Storage upload (via /api/media/upload, type: 'avatar') instead
+  // of embedding a base64 data: URI directly in avatar_url - same class
+  // of bug already fixed for the admin's user-edit avatar picker (see
+  // handleEditAvatarUpload in panel/users/page.tsx), just never applied
+  // here on the self-service first-login path.
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => setAvatarPreview(event.target?.result as string);
-    reader.readAsDataURL(file);
+    setIsUploadingAvatar(true);
+    try {
+      const body = new FormData();
+      body.append('files', file);
+      body.append('type', 'avatar');
+      const res = await fetch('/api/media/upload', { method: 'POST', body });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok || !result.media?.[0]?.url) {
+        throw new Error(result.error || "Échec du téléversement de l'image.");
+      }
+      setAvatarPreview(result.media[0].url);
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Could not upload this image.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUploadingAvatar(false);
+    }
   };
 
   async function onSubmit(data: FormValues) {
@@ -258,9 +282,13 @@ export function CompleteProfileForm() {
                     htmlFor="avatar-upload"
                     className="absolute -bottom-1 -right-1 p-1.5 bg-primary rounded-full text-white cursor-pointer hover:bg-primary/90 transition-colors"
                   >
-                    <Upload className="h-3 w-3" />
+                    {isUploadingAvatar ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Upload className="h-3 w-3" />
+                    )}
                   </label>
-                  <input id="avatar-upload" type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+                  <input id="avatar-upload" type="file" accept="image/*" className="hidden" disabled={isUploadingAvatar} onChange={handleAvatarUpload} />
                 </div>
                 <p className="text-xs text-muted-foreground flex-1">
                   Click the upload icon to add a profile photo (JPG, PNG, WebP - max 5MB).

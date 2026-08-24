@@ -15,7 +15,7 @@ import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import { useToast } from '@/components/ui/use-toast';
 import { X, Plus, Sparkles, TrendingUp, Pin, Loader2 } from 'lucide-react';
 import { FaFire } from 'react-icons/fa';
-import { getCurrentUser } from '@/lib/auth/actions';
+import { getCurrentUserWithRole } from '@/lib/auth/actions';
 
 interface ArticleFormProps {
   article?: any;
@@ -65,6 +65,7 @@ export function ArticleForm({ article, onSuccess, onCancel }: ArticleFormProps) 
   const [showNewSubcategoryInput, setShowNewSubcategoryInput] = useState(false);
   const [newSubcategoryName, setNewSubcategoryName] = useState('');
   const [isCreatingSubcategory, setIsCreatingSubcategory] = useState(false);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
 
   // Writers and contributors could previously reassign an article to any
   // other author, and flip on "À la une" / "Tendance" / "Suggestion" /
@@ -74,7 +75,13 @@ export function ArticleForm({ article, onSuccess, onCancel }: ArticleFormProps) 
   // are hidden (not just disabled) for those two roles - the underlying
   // form values are untouched either way, so editing an already-flagged
   // article as a writer/contributor doesn't silently clear its flags.
-  const currentRole = currentUser?.user_metadata?.role || 'contributor';
+  // DB-authoritative role (public.users via getCurrentUserWithRole()),
+  // not the session JWT's user_metadata.role - the JWT claim only
+  // refreshes on a full login, so a writer/contributor just promoted to
+  // editor/admin without re-logging in would otherwise still have these
+  // sections hidden here even though the server-side checks in
+  // /api/articles (see that route's comment) would now allow them.
+  const [currentRole, setCurrentRole] = useState('contributor');
   const canAssignAuthor = currentRole === 'admin' || currentRole === 'editor';
   const canAssignEditorialFlags = currentRole === 'admin' || currentRole === 'editor';
 
@@ -105,8 +112,10 @@ export function ArticleForm({ article, onSuccess, onCancel }: ArticleFormProps) 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const user = await getCurrentUser();
+        const auth = await getCurrentUserWithRole();
+        const user = auth?.user ?? null;
         setCurrentUser(user);
+        setCurrentRole(auth?.role || 'contributor');
         if (!formData.author_id && user) {
           setFormData(prev => ({ ...prev, author_id: user.id }));
         }
@@ -439,26 +448,63 @@ export function ArticleForm({ article, onSuccess, onCancel }: ArticleFormProps) 
             <CardContent className="pt-6 space-y-4">
               <div>
                 <Label>Image de couverture</Label>
-                <Input type="file" accept="image/*" onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (event) => setFormData({ ...formData, coverImage: event.target?.result as string });
-                    reader.readAsDataURL(file);
-                  }
-                }} />
-                {formData.coverImage && (
+                <Input
+                  type="file"
+                  accept="image/*"
+                  disabled={isUploadingCover}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!file) return;
+                    setIsUploadingCover(true);
+                    try {
+                      // Real Storage upload (via /api/media/upload) instead
+                      // of embedding a base64 data: URI directly in the
+                      // article's featured_image column - the same class of
+                      // bug already fixed for ads (see ad-form.tsx) and
+                      // avatars, just never applied here. That base64
+                      // string easily runs 500KB-2MB per image, and
+                      // getArticles() (article-service.ts) does
+                      // `select('*')` for every list of articles shown
+                      // anywhere on the site (homepage, category pages, the
+                      // admin list, the sitemap...) - every one of those
+                      // was pulling the full inlined image for every
+                      // article on the page. It also meant an uploaded
+                      // cover image never appeared in the Media Library and
+                      // could never be reused/deduplicated, since it was
+                      // never actually a stored file anywhere.
+                      const body = new FormData();
+                      body.append('files', file);
+                      body.append('type', 'image');
+                      const res = await fetch('/api/media/upload', { method: 'POST', body });
+                      const result = await res.json().catch(() => ({}));
+                      if (!res.ok || !result.media?.[0]?.url) {
+                        throw new Error(result.error || 'Échec du téléversement.');
+                      }
+                      setFormData((prev) => ({ ...prev, coverImage: result.media[0].url }));
+                    } catch (error: any) {
+                      toast({
+                        title: 'Erreur',
+                        description: error?.message || "Impossible de téléverser l'image de couverture.",
+                        variant: 'destructive',
+                      });
+                    } finally {
+                      setIsUploadingCover(false);
+                    }
+                  }}
+                />
+                {isUploadingCover && (
+                  <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Téléversement en cours...
+                  </p>
+                )}
+                {formData.coverImage && !isUploadingCover && (
                   <div className="relative mt-2 w-full h-32 overflow-hidden rounded-lg">
-                    {/* unoptimized: this preview is a base64 data: URL read
-                        straight from the file picker before upload (see
-                        reader.readAsDataURL above) - there's no remote URL
-                        for Next's image optimizer to fetch and resize, so
-                        optimization is skipped for this one. */}
                     <Image
                       src={formData.coverImage}
                       alt="Couverture"
                       fill
-                      unoptimized
                       className="object-cover"
                     />
                   </div>

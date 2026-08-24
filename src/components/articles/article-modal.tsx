@@ -105,9 +105,18 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
               </div>
             </header>
 
-            {/* Cover Image */}
+            {/* Cover Image - sticky so it stays pinned in view once
+                scrolling reaches it, while the header above scrolls away
+                and the content below keeps scrolling past it. position:
+                sticky needs a scrollable ancestor to stick within, which
+                is the modal's own overflow-y-auto box below - it unsticks
+                naturally once the end of this <article> is reached, since
+                nothing constrains an earlier unstick point. z-10 keeps it
+                above the content flowing past underneath during that
+                transition; shadow-lg gives it a visible edge against the
+                content once pinned, instead of a hard flat cutoff. */}
             {article.featured_image || article.coverImage ? (
-              <div className="relative mt-6 h-[280px] w-full overflow-hidden rounded-lg">
+              <div className="sticky top-0 z-10 mt-6 h-[280px] w-full overflow-hidden rounded-lg shadow-lg">
                 <Image
                   src={article.featured_image || article.coverImage}
                   alt={article.title || 'Article'}

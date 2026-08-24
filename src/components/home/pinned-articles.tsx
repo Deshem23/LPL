@@ -69,12 +69,14 @@ export async function PinnedArticles({ locale, articles: articlesProp }: PinnedA
             <Badge variant="secondary" className="mb-3 bg-primary text-white">
               À la une
             </Badge>
+            {/* Excerpt removed - on top of the title, it filled enough of
+                the image that on mobile the two together covered nearly
+                the whole card, leaving barely any actual photo visible.
+                The title alone is what a "À la une" card needs to work;
+                the excerpt is one click away on the article itself. */}
             <h2 className="text-2xl font-bold sm:text-3xl lg:text-4xl">
               {mainArticle.title}
             </h2>
-            <p className="mt-2 line-clamp-2 text-sm text-white/80 sm:text-base">
-              {mainArticle.excerpt}
-            </p>
             <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-white/70 sm:text-sm">
               <span>{mainArticle.author.name}</span>
               <span>{formatDate(mainArticle.createdAt)}</span>
