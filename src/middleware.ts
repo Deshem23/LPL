@@ -276,7 +276,7 @@ export async function middleware(request: NextRequest) {
     if (user && (pathname === '/lpl-access-2026' || pathname === '/register')) {
       const { data: profile } = await supabase
         .from('users')
-        .select('must_change_password')
+        .select('role, must_change_password')
         .eq('id', user.id)
         .single();
 
@@ -284,7 +284,13 @@ export async function middleware(request: NextRequest) {
         return redirectWithCookies(new URL('/complete-profile', request.url));
       }
 
-      const role = user.user_metadata?.role || 'contributor';
+      // DB role (public.users), not the JWT's user_metadata.role - the
+      // JWT claim is only refreshed on a full login/token refresh, so an
+      // admin promoted via the Users page (updateUser()/updateUserRole())
+      // would otherwise keep landing on their OLD role's dashboard here
+      // until they log out and back in, even though the promotion already
+      // took effect in the database.
+      const role = profile?.role || user.user_metadata?.role || 'contributor';
       const redirectPath = getDashboardPath(role);
       return redirectWithCookies(new URL(redirectPath, request.url));
     }
@@ -323,7 +329,7 @@ export async function middleware(request: NextRequest) {
     // fresh login/token refresh.
     const { data: profile } = await supabase
       .from('users')
-      .select('must_change_password')
+      .select('role, must_change_password')
       .eq('id', user.id)
       .single();
 
@@ -331,8 +337,15 @@ export async function middleware(request: NextRequest) {
       return redirectWithCookies(new URL('/complete-profile', request.url));
     }
 
-    // Check role-based access
-    const userRole = user.user_metadata?.role || 'contributor';
+    // Check role-based access - DB role (public.users), not the JWT's
+    // user_metadata.role. Same staleness problem as STEP 4A above: this is
+    // the actual security-enforcing check (the sidebar hiding nav items is
+    // just UI), so gating it on a claim that can lag behind an admin's
+    // role change until next login meant a demoted user could keep
+    // reaching pages their new role shouldn't allow, and a freshly
+    // promoted admin could get bounced to /unauthorized on their own
+    // panel until they re-logged in.
+    const userRole = profile?.role || user.user_metadata?.role || 'contributor';
     const allowedRoles = getAllowedRolesForPath(pathname);
 
     if (allowedRoles && !allowedRoles.includes(userRole)) {

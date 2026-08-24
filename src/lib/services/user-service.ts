@@ -403,10 +403,10 @@ export async function updateUserRole(userId: string, role: string): Promise<{ su
 
 export async function deleteUser(userId: string): Promise<{ success: boolean; error?: string }> {
   console.log(`🗑️ Deleting user ${userId}`);
-  
+
   try {
     const supabase = createAdminClient();
-    
+
     const { error } = await supabase
       .from('users')
       .delete()
@@ -415,6 +415,24 @@ export async function deleteUser(userId: string): Promise<{ success: boolean; er
     if (error) {
       console.error('❌ Error deleting user:', error);
       return { success: false, error: error.message };
+    }
+
+    // This only removed the public.users profile row above - the actual
+    // Supabase Auth account (auth.users) survived untouched, since that
+    // requires this separate admin API call, not a delete on the `users`
+    // table. Left unfixed, a "deleted" user vanished from getAllUsers()
+    // (which only reads public.users) while their login/email was still
+    // fully registered in Supabase Auth - so they silently disappeared
+    // from the admin list, yet re-adding that same email later failed
+    // with "User already registered" (createUser()'s supabase.auth.signUp()
+    // call, from a ghost account nothing in this UI could see or remove).
+    const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+    if (authError) {
+      console.error('⚠️ Profile deleted but auth account removal failed:', authError);
+      return {
+        success: false,
+        error: `Le profil a été supprimé mais le compte d'authentification n'a pas pu être supprimé : ${authError.message}. Cet e-mail restera bloqué tant que le compte n'est pas supprimé manuellement dans Supabase (Authentication > Users).`,
+      };
     }
 
     console.log(`✅ User deleted: ${userId}`);

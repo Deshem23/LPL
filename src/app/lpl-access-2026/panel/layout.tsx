@@ -39,7 +39,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { getCurrentUser, signOut } from '@/lib/auth/actions';
+import { getCurrentUserWithRole, signOut } from '@/lib/auth/actions';
 import { useToast } from '@/components/ui/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 
@@ -138,10 +138,17 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const loadUser = async () => {
     try {
       setLoading(true);
-      const user = await getCurrentUser();
+      // DB role (public.users), not the session JWT's user_metadata.role -
+      // the JWT claim only refreshes on a full login, so reading it here
+      // meant the sidebar/nav (getNavItems(userRole) below) and the role
+      // badge kept showing a promoted/demoted user's OLD role - and for
+      // an admin, that meant seeing the restricted contributor nav on
+      // their own dashboard - until they logged out and back in, even
+      // though the role change had already taken effect in the database.
+      const result = await getCurrentUserWithRole();
+      const user = result?.user;
       if (user) {
-        // Get role from user metadata
-        const role = user.user_metadata?.role || 'contributor';
+        const role = result?.role || 'contributor';
         setUserRole(role);
         setUserEmail(user.email || '');
 
