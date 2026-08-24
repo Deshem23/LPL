@@ -47,6 +47,24 @@ function getLocale(request: NextRequest): string {
  * Check if path is public (no auth required)
  */
 function isPublicPath(pathname: string): boolean {
+  // The admin panel lives at /lpl-access-2026/panel/** on disk - nested
+  // under the SAME /lpl-access-2026 segment as the public login page. That
+  // means the "nested route" prefix check below would otherwise also match
+  // every admin panel path (e.g. /lpl-access-2026/panel/settings) as
+  // "public", since it literally starts with '/lpl-access-2026/'. STEP 4A
+  // in the main middleware function checks isPublicPath() before STEP 4C
+  // checks isAdminPath() and returns early once it matches - so with this
+  // bug, EVERY admin panel request was hitting STEP 4A, never reaching
+  // STEP 4A's own redirect condition (pathname is never exactly
+  // '/lpl-access-2026'), and falling through to `return supabaseResponse`
+  // - which let the request through with NO auth check and NO role check
+  // at all, regardless of whether `user` was even set. Excluded explicitly
+  // here so admin paths always fall through to STEP 4C instead, where the
+  // real auth+role gating lives.
+  if (isAdminPath(pathname)) {
+    return false;
+  }
+
   const publicPaths = [
     '/lpl-access-2026',
     '/register',

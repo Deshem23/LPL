@@ -58,7 +58,19 @@ export function LoginForm() {
           variant: 'destructive',
         });
       }
-    } catch (error) {
+    } catch (error: any) {
+      // redirect() inside a Server Action throws a special error (digest
+      // starting with "NEXT_REDIRECT") that Next.js's own action-calling
+      // machinery is supposed to intercept before it ever reaches our own
+      // catch - but that interception has proven inconsistent across
+      // Next.js versions/edge cases in real-world reports, and if it ever
+      // lands here unrethrown, this generic catch would swallow a
+      // successful login as if it were a failure (no navigation, no error
+      // shown - "does nothing"). Rethrowing it lets Next.js's router
+      // handle the navigation as intended instead of treating it as a bug.
+      if (error?.digest?.startsWith('NEXT_REDIRECT')) {
+        throw error;
+      }
       toast({
         title: 'Error',
         description: 'Something went wrong. Please try again.',
@@ -81,7 +93,12 @@ export function LoginForm() {
         });
       }
       // Redirect happens in the server action
-    } catch (error) {
+    } catch (error: any) {
+      // Same NEXT_REDIRECT safeguard as onSubmit() above - signInWithGoogle()
+      // also calls redirect() server-side.
+      if (error?.digest?.startsWith('NEXT_REDIRECT')) {
+        throw error;
+      }
       toast({
         title: 'Error',
         description: 'Something went wrong with Google sign in.',
