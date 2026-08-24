@@ -15,6 +15,7 @@
 import {
   getArticles as fetchArticlesFromDb,
   getArticleBySlug as fetchArticleBySlugFromDb,
+  incrementViewCount,
 } from '@/lib/services/article-service';
 import {
   getCategoryWithChildIdsBySlug,
@@ -260,5 +261,16 @@ export async function getArticle({
   // getArticleBySlug() doesn't filter by status - guard here so a direct
   // link to a draft/scheduled/archived article never renders publicly.
   if (!row || row.status !== 'published') return null;
+
+  // incrementViewCount() (article-service.ts) existed already, wired up
+  // to the atomic RPC in migrations/18_atomic_counters.sql, but nothing
+  // in the app ever actually called it - this is the only place a public
+  // reader's article view is resolved, so it's the right (and only)
+  // place to count one. Fire-and-forget: a logging hiccup here should
+  // never slow down or fail the page render.
+  incrementViewCount(row.id).catch((err) => {
+    console.error('getArticle: view count increment failed for', row.id, err);
+  });
+
   return mapDbArticle(row);
 }
