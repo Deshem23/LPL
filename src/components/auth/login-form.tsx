@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -27,14 +26,9 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
-interface LoginFormProps {
-  redirectTo?: string;
-}
-
-export function LoginForm({ redirectTo = '/lpl-access-2026/panel' }: LoginFormProps) {
+export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const router = useRouter();
   const { toast } = useToast();
 
   const form = useForm<LoginFormValues>({
@@ -48,30 +42,22 @@ export function LoginForm({ redirectTo = '/lpl-access-2026/panel' }: LoginFormPr
   async function onSubmit(data: LoginFormValues) {
     setIsLoading(true);
     try {
+      // On success, loginWithEmail() redirects server-side (see its
+      // comment in actions.ts) instead of returning a path for us to
+      // router.push() - that used to leave a window in production where
+      // the next navigation could reach middleware before the new
+      // session cookie had actually landed, bouncing back to login right
+      // after a login that had actually succeeded. So a resolved result
+      // here only ever means the error case; success never returns.
       const result = await loginWithEmail(data.email, data.password);
-      
-      if (result.error) {
+
+      if (result?.error) {
         toast({
           title: 'Login Failed',
           description: result.error,
           variant: 'destructive',
         });
-        return;
       }
-
-      toast({
-        title: 'Welcome Back!',
-        description: 'You have been successfully logged in.',
-      });
-
-      // Redirect based on role or custom redirect
-      if (result.redirectTo) {
-        router.push(result.redirectTo);
-      } else {
-        router.push(redirectTo);
-      }
-      
-      router.refresh();
     } catch (error) {
       toast({
         title: 'Error',

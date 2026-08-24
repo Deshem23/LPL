@@ -71,11 +71,18 @@ export async function loginWithEmail(email: string, password: string) {
     ipAddress: getRequestIp(),
   });
 
-  return {
-    user: data.user,
-    role: role,
-    redirectTo,
-  };
+  // redirect() here (not returning redirectTo for the client to
+  // router.push()) matters in production: it makes the navigation part
+  // of THIS same Server Action response, so the browser applies the new
+  // session cookie and follows the redirect together. The previous
+  // "return redirectTo, let the client router.push() to it" pattern left
+  // a gap where the client's next navigation could reach middleware
+  // before the session cookie had actually landed - middleware would see
+  // no user, and bounce straight back to the login page with a
+  // ?redirect= param, which looks exactly like "login succeeded but I'm
+  // not logged in." signInWithGoogle() below already uses this same
+  // redirect()-in-the-action pattern for the same reason.
+  redirect(redirectTo);
 }
 
 /**
