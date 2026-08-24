@@ -1,0 +1,186 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
+import { X, Calendar, Clock, User, Eye, Share2, Bookmark } from 'lucide-react';
+import { formatDate, getReadingTime } from '@/lib/utils';
+import { SocialShare } from '@/components/articles/social-share';
+import { AdComponent } from '@/components/shared/ad-component';
+import { ArticleTags } from '@/components/articles/article-tags';
+import { AuthorBio } from '@/components/articles/author-bio';
+import { useRouter } from 'next/navigation';
+
+interface ArticleModalProps {
+  article: any;
+  onClose?: () => void;
+  locale: string;
+}
+
+export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
+  const [isVisible, setIsVisible] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    setIsVisible(true);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'auto';
+    };
+  }, []);
+
+  const handleClose = () => {
+    setIsVisible(false);
+    // Falls back to router.back() so this works when the parent page is a
+    // Server Component and can't pass a client-side onClose callback.
+    setTimeout(() => (onClose ? onClose() : router.back()), 300);
+  };
+
+  // Handle author click - redirect to author page
+  const handleAuthorClick = (authorId: string) => {
+    handleClose();
+    // Use window.location for a full page navigation after modal closes
+    setTimeout(() => {
+      window.location.href = `/${locale}/author/${authorId}`;
+    }, 350);
+  };
+
+  // Get the date safely
+  const getDate = () => {
+    return article.published_at || article.createdAt || article.created_at || new Date().toISOString();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4 sm:p-6">
+      <div
+        className={`relative w-full max-w-4xl mx-auto my-8 transition-all duration-300 ${
+          isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
+        }`}
+      >
+        {/* max-h/overflow-y-auto keeps this a standard, contained dialog
+            instead of a page-length block - a previous version was
+            max-w-5xl with no height cap, so a long article turned the
+            "modal" into something the size of a whole page; that was
+            then narrowed to max-w-2xl, which went too far the other way
+            and made reading an article feel cramped. max-w-4xl is the
+            middle ground: wide enough to read comfortably, still capped
+            in height. */}
+        <div className="relative rounded-xl bg-background p-4 sm:p-6 md:p-8 shadow-2xl max-h-[85vh] overflow-y-auto">
+          {/* Close Button */}
+          <button
+            onClick={handleClose}
+            className="absolute right-4 top-4 z-10 rounded-full p-2 hover:bg-muted transition-colors bg-background/80 backdrop-blur-sm"
+          >
+            <X className="h-5 w-5" />
+          </button>
+
+          {/* Article Content */}
+          <article className="max-w-full">
+            {/* Header */}
+            <header className="space-y-4">
+              <h1 className="text-3xl font-bold md:text-4xl">{article.title || 'Article'}</h1>
+              <p className="text-lg text-muted-foreground">{article.excerpt || ''}</p>
+              
+              <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                {/* Author - Clickable to redirect to author page */}
+                <button
+                  onClick={() => handleAuthorClick(article.author?.id || article.author_id)}
+                  className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
+                >
+                  <User className="h-4 w-4" />
+                  <span className="font-medium">{article.author?.name || article.author_name || 'Auteur inconnu'}</span>
+                </button>
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-4 w-4" />
+                  {formatDate(getDate())}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Clock className="h-4 w-4" />
+                  {getReadingTime(article.content || '')} min
+                </span>
+                <span className="flex items-center gap-1">
+                  <Eye className="h-4 w-4" />
+                  {article.view_count || article.views || 0} vues
+                </span>
+              </div>
+            </header>
+
+            {/* Cover Image */}
+            {article.featured_image || article.coverImage ? (
+              <div className="relative mt-6 h-[280px] w-full overflow-hidden rounded-lg">
+                <Image
+                  src={article.featured_image || article.coverImage}
+                  alt={article.title || 'Article'}
+                  fill
+                  sizes="(min-width: 768px) 720px, 100vw"
+                  priority
+                  className="object-cover"
+                />
+              </div>
+            ) : null}
+
+            {/* Content - Tailwind Typography's `prose` sets its base
+                line-height (1.75) on the .prose container itself, not
+                per-element, so the first pass (prose-p:leading-relaxed,
+                1.625) only nudged individual <p> tags and the container's
+                looser 1.75 was still winning most of the visual reading
+                rhythm. Setting `leading-normal` directly on this wrapper
+                overrides that base container line-height outright, and
+                prose-p:leading-normal keeps <p> consistent with it. Margins
+                tightened further too (my-3 -> my-2, matching the editor). */}
+            <div
+              className="mt-6 prose dark:prose-invert max-w-none leading-normal prose-p:my-2 prose-p:leading-normal prose-headings:mt-4 prose-headings:mb-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-blockquote:my-2"
+              dangerouslySetInnerHTML={{ __html: article.content || '' }}
+            />
+
+            {/* Tags */}
+            {article.tags && article.tags.length > 0 && (
+              <div className="mt-8">
+                <ArticleTags tags={article.tags} />
+              </div>
+            )}
+
+            {/* Author Bio - the real publishing user's info (bio, role,
+                social links), clickable through to their full profile at
+                /author/[id]. */}
+            {article.author && (
+              <div className="mt-8">
+                <AuthorBio
+                  author={{
+                    id: article.author.id,
+                    name: article.author.name,
+                    avatar: article.author.avatarUrl,
+                    bio: article.author.bio,
+                    email: article.author.email,
+                    twitter: article.author.twitter,
+                    linkedin: article.author.linkedin,
+                    website: article.author.website,
+                    role: article.author.roleTitle,
+                  }}
+                  locale={locale}
+                />
+              </div>
+            )}
+
+            {/* Ad Component - In Article */}
+            <div className="mt-8">
+              <AdComponent type="in-article" />
+            </div>
+
+            {/* Social Share & Actions */}
+            <div className="mt-6 flex flex-wrap items-center justify-between border-t pt-6">
+              <SocialShare 
+                url={`${process.env.NEXT_PUBLIC_APP_URL}/${locale}/articles/${article.slug}`}
+                title={article.title || ''}
+              />
+              <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
+                <Bookmark className="h-4 w-4" />
+                Enregistrer
+              </button>
+            </div>
+          </article>
+        </div>
+      </div>
+    </div>
+  );
+}

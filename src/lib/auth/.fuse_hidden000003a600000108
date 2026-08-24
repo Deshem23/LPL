@@ -1,0 +1,61 @@
+// Role types
+export type UserRole = 'admin' | 'editor' | 'writer' | 'contributor';
+
+// Get current user role - uses localStorage for dev
+export function getCurrentUserRole(): UserRole {
+  // In development, check localStorage first
+  if (typeof window !== 'undefined') {
+    const savedRole = localStorage.getItem('userRole') as UserRole;
+    if (savedRole && ['admin', 'editor', 'writer', 'contributor'].includes(savedRole)) {
+      return savedRole;
+    }
+  }
+  // Default to admin
+  return 'admin';
+}
+
+// Set user role (for dev testing)
+export function setUserRole(role: UserRole): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('userRole', role);
+    // Reload to apply changes
+    window.location.reload();
+  }
+}
+
+// Check if user has access to a specific feature
+export function hasAccess(userRole: UserRole, feature: string): boolean {
+  const permissions: Record<UserRole, string[]> = {
+    admin: [
+      'articles', 'media', 'users', 'categories', 'ads', 
+      'analytics', 'settings', 'review', 'create_article'
+    ],
+    editor: [
+      'articles', 'media', 'ads', 'analytics', 'review', 'create_article'
+    ],
+    writer: [
+      'articles', 'media', 'analytics', 'create_article'
+    ],
+    contributor: [
+      'articles', 'create_article'
+    ],
+  };
+  
+  return permissions[userRole]?.includes(feature) || false;
+}
+
+// Get role label
+export function getRoleLabel(role: UserRole): string {
+  const labels: Record<UserRole, string> = {
+    admin: 'Administrateur',
+    editor: 'Rédacteur',
+    writer: 'Auteur',
+    contributor: 'Contributeur',
+  };
+  return labels[role];
+}
+
+// Get all roles for dev testing
+export function getAllRoles(): UserRole[] {
+  return ['admin', 'editor', 'writer', 'contributor'];
+}

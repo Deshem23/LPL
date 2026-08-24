@@ -1,0 +1,26 @@
+import { Metadata } from 'next';
+import { CompleteProfileForm } from '@/components/auth/complete-profile-form';
+
+export const metadata: Metadata = {
+  title: 'Complete your account - Les Pages Libres',
+  description: 'Set your password and complete your author profile.',
+};
+
+export default function CompleteProfilePage() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5 p-4 py-12">
+      <div className="w-full max-w-lg">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold">
+            <span className="text-primary">Les Pages</span>
+            <span className="text-secondary"> Libres</span>
+          </h1>
+          <p className="text-muted-foreground mt-2">
+            Welcome! Set a password only you know, and confirm your author profile before continuing.
+          </p>
+        </div>
+        <CompleteProfileForm />
+      </div>
+    </div>
+  );
+}

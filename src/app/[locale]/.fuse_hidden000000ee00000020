@@ -1,0 +1,43 @@
+import { NextIntlClientProvider } from 'next-intl';
+import { getMessages } from 'next-intl/server';
+import { notFound } from 'next/navigation';
+import { ThemeProvider } from '@/components/providers/theme-provider';
+import { Header } from '@/components/layout/header';
+import { Footer } from '@/components/layout/footer';
+import { Toaster } from '@/components/ui/toaster';
+import { locales } from '@/lib/i18n/config';
+
+interface LocaleLayoutProps {
+  children: React.ReactNode;
+  params: { locale: string };
+}
+
+export default async function LocaleLayout({
+  children,
+  params: { locale },
+}: LocaleLayoutProps) {
+  // Validate locale
+  if (!locales.includes(locale as any)) {
+    notFound();
+  }
+
+  // Get messages for this locale
+  const messages = await getMessages();
+
+  // <html> and <body> live in the root layout (src/app/layout.tsx) only.
+  // Next.js requires exactly one root layout to own those tags — rendering
+  // them here too produced invalid nested <html>/<body> markup and caused
+  // hydration errors on every page load.
+  return (
+    <NextIntlClientProvider messages={messages} locale={locale}>
+      <ThemeProvider>
+        <div className="relative flex min-h-screen flex-col">
+          <Header />
+          <main className="flex-1">{children}</main>
+          <Footer locale={locale} />
+        </div>
+        <Toaster />
+      </ThemeProvider>
+    </NextIntlClientProvider>
+  );
+}

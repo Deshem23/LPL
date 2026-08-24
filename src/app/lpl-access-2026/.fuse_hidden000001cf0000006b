@@ -1,0 +1,30 @@
+import Link from 'next/link';
+import { LoginForm } from '@/components/auth/login-form';
+
+// Was its own hand-rolled form that POSTed to /api/auth/login - it had
+// no Google sign-in button and no "forgot password" link, even though
+// both already existed, fully wired, in LoginForm - that component just
+// wasn't rendered anywhere. This renders it instead, so Google OAuth and
+// password reset are actually reachable from the login screen.
+export default function LoginPage() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold">
+            <span className="text-primary">Les Pages</span>
+            <span className="text-secondary"> Libres</span>
+          </h1>
+          <p className="text-sm text-muted-foreground mt-2">Login to your account</p>
+        </div>
+        <LoginForm />
+        <p className="text-center text-sm text-muted-foreground mt-4">
+          Don't have an account?{' '}
+          <Link href="/register" className="text-primary hover:underline font-medium">
+            Sign up
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
+}

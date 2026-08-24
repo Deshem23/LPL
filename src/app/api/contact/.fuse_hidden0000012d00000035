@@ -1,0 +1,70 @@
+import { NextResponse } from 'next/server';
+import { sendMail } from '@/lib/email/mailer';
+import { getSiteSettings } from '@/lib/services/settings-service';
+
+// Always fetch fresh from the DB - a GET route handler with no
+// request-derived dynamic behavior is otherwise eligible for Next's
+// static Route Handler caching, which is what caused this endpoint to
+// serve a stale snapshot until a full rebuild/refresh.
+export const dynamic = 'force-dynamic';
+
+
+// Backs the public contact form (/[locale]/contact). There's no
+// contact_messages table in this project, so a submission isn't stored -
+// it's emailed straight to the site's configured address (Settings >
+// Email > "Email d'expédition"), with replyTo set to the sender so
+// whoever receives it can just hit reply. If SMTP isn't configured yet
+// or notifications are off, this still returns success to the visitor
+// (their message isn't lost from their point of view) but logs a
+// warning server-side - see sendMail()'s "fails soft" behavior.
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { name, email, message } = body;
+
+    if (!name || !email || !message) {
+      return NextResponse.json(
+        { error: 'Le nom, l\'email et le message sont requis.' },
+        { status: 400 }
+      );
+    }
+    if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: 'Adresse email invalide.' }, { status: 400 });
+    }
+
+    const settings = await getSiteSettings();
+    const recipient = settings.from_email;
+
+    if (!recipient) {
+      console.warn('api/contact: no "from_email" configured in Settings > Email - message was not sent anywhere.');
+      // Still tell the visitor it worked - the missing config is an admin
+      // problem to fix in Settings, not something the visitor caused.
+      return NextResponse.json({ success: true });
+    }
+
+    const result = await sendMail({
+      to: recipient,
+      subject: `[Contact] Nouveau message de ${name}`,
+      replyTo: email,
+      text: `De : ${name} <${email}>\n\n${message}`,
+      html: `<p><strong>De :</strong> ${escapeHtml(name)} &lt;${escapeHtml(email)}&gt;</p><p>${escapeHtml(message).replace(/\n/g, '<br/>')}</p>`,
+    });
+
+    if (!result.sent) {
+      console.warn(`api/contact: message not sent (${result.reason}).`);
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error handling contact form submission:', error);
+    return NextResponse.json({ error: 'Une erreur est survenue. Réessayez plus tard.' }, { status: 500 });
+  }
+}
+
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}

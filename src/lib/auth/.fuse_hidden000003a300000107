@@ -1,0 +1,176 @@
+'use server';
+
+import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
+
+/**
+ * Login with email and password
+ */
+export async function loginWithEmail(email: string, password: string) {
+  const supabase = createClient();
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  if (!data.user) {
+    return { error: 'Login failed' };
+  }
+
+  // Role and the first-login flag both live in public.users, not the
+  // JWT's user_metadata - the metadata is only set at signup and can
+  // drift out of sync with an admin-changed role (see updateUser() in
+  // user-service.ts), so it's read here as a fallback only.
+  const { data: profile } = await supabase
+    .from('users')
+    .select('role, must_change_password')
+    .eq('id', data.user.id)
+    .single();
+
+  const role = profile?.role || data.user.user_metadata?.role || 'contributor';
+
+  // Keep the JWT's role claim in sync so middleware's role-based route
+  // gating doesn't lag behind an admin-made role change.
+  if (profile?.role && profile.role !== data.user.user_metadata?.role) {
+    await supabase.auth.updateUser({ data: { role: profile.role } }).catch(() => {});
+  }
+
+  const redirectTo = profile?.must_change_password ? '/complete-profile' : getDashboardPath(role);
+
+  return {
+    user: data.user,
+    role: role,
+    redirectTo,
+  };
+}
+
+/**
+ * Sign up with email and password
+ */
+export async function signupWithEmail(email: string, password: string, name: string) {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        name,
+        role: 'contributor', // Default role
+      },
+    },
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  return { user: data.user };
+}
+
+/**
+ * Sign in with Google OAuth
+ */
+export async function signInWithGoogle() {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+    },
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  if (data.url) {
+    redirect(data.url);
+  }
+}
+
+/**
+ * Sign out
+ */
+export async function signOut() {
+  const supabase = createClient();
+  await supabase.auth.signOut();
+  redirect('/login');
+}
+
+/**
+ * Get current user
+ */
+export async function getCurrentUser() {
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  return user;
+}
+
+/**
+ * Get current session
+ */
+export async function getSession() {
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  return session;
+}
+
+/**
+ * Reset password
+ */
+export async function resetPassword(email: string) {
+  const supabase = createClient();
+  
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/reset-password`,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  return { success: true };
+}
+
+/**
+ * Update password (after reset)
+ */
+export async function updatePassword(password: string) {
+  const supabase = createClient();
+  
+  const { error } = await supabase.auth.updateUser({
+    password,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  return { success: true };
+}
+
+/**
+ * Get dashboard path based on role
+ */
+function getDashboardPath(role: string): string {
+  switch (role) {
+    case 'admin':
+      return '/admin';
+    case 'editor':
+      return '/admin/editor';
+    case 'writer':
+      return '/admin/writer';
+    case 'contributor':
+      return '/admin/contributor';
+    default:
+      return '/admin';
+  }
+}

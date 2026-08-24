@@ -1,0 +1,144 @@
+export const metadata = {
+  title: 'Politique de confidentialité - Les Pages Libres',
+  description:
+    "Comment Les Pages Libres collecte, utilise et protège vos données personnelles, en tant que visiteur, abonné ou membre de l'équipe éditoriale.",
+};
+
+// Previously just a handful of one-line English placeholder paragraphs.
+// This covers both audiences that actually use the site: anonymous
+// visitors/readers, and registered platform users (contributor, writer,
+// editor, admin) - and includes a #cookies section, since the footer
+// links to /privacy#cookies.
+export default async function PrivacyPage({
+  params: { locale },
+}: {
+  params: { locale: string };
+}) {
+  const lastUpdated = new Date().toLocaleDateString('fr-FR', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  return (
+    <div className="container mx-auto px-4 py-16 max-w-3xl">
+      <h1 className="text-4xl font-bold mb-6">Politique de confidentialité</h1>
+      <div className="prose prose-gray dark:prose-invert max-w-none">
+        <p>Dernière mise à jour : {lastUpdated}</p>
+
+        <p>
+          Les Pages Libres (« nous », « notre », « la plateforme ») publie de l'actualité et
+          des contenus d'opinion depuis Port-au-Prince, Haïti. Cette politique explique quelles
+          données nous recueillons, pourquoi, et quels choix vous avez - que vous soyez un
+          simple visiteur du site ou un compte enregistré (lecteur abonné, contributeur,
+          rédacteur, éditeur ou administrateur).
+        </p>
+
+        <h2>1. Les informations que nous collectons</h2>
+        <h3>Si vous êtes un visiteur</h3>
+        <p>
+          Lorsque vous consultez le site sans créer de compte, nous ne collectons que des
+          informations techniques limitées : pages visitées, type d'appareil et de navigateur,
+          et des statistiques de fréquentation agrégées qui nous aident à comprendre quels
+          articles intéressent nos lecteurs. Si vous utilisez notre formulaire de contact ou
+          vous inscrivez à la newsletter, nous recevons également votre adresse e-mail et le
+          contenu de votre message.
+        </p>
+        <h3>Si vous créez un compte</h3>
+        <p>
+          Les comptes (contributeur, rédacteur, éditeur ou administrateur) nécessitent un nom,
+          une adresse e-mail et un mot de passe. Vous pouvez également ajouter volontairement
+          une photo de profil, une biographie, un titre/fonction et des liens vers vos réseaux
+          sociaux (Twitter/X, LinkedIn, site personnel) : ces informations, lorsqu'elles sont
+          renseignées, sont affichées publiquement sur votre page auteur et sous les articles
+          que vous publiez. Nous conservons aussi un journal des actions effectuées dans
+          l'espace d'administration (connexions, publications, modifications) à des fins de
+          sécurité et de traçabilité éditoriale.
+        </p>
+
+        <h2>2. Comment nous utilisons vos informations</h2>
+        <p>Nous utilisons les données collectées pour :</p>
+        <ul>
+          <li>faire fonctionner et sécuriser la plateforme (authentification, rôles, journal d'audit) ;</li>
+          <li>publier et attribuer correctement les articles à leurs auteurs ;</li>
+          <li>répondre aux messages envoyés via le formulaire de contact ;</li>
+          <li>vous envoyer la newsletter si vous y êtes abonné, et les e-mails liés à votre compte (par exemple lors de la création d'un compte par un administrateur) ;</li>
+          <li>mesurer l'audience et améliorer le contenu et le fonctionnement du site.</li>
+        </ul>
+        <p>
+          Nous ne vendons pas vos données personnelles et ne les partageons pas avec des tiers
+          à des fins commerciales.
+        </p>
+
+        <h2 id="cookies">3. Cookies et technologies similaires</h2>
+        <p>
+          Le site utilise des cookies, c'est-à-dire de petits fichiers déposés sur votre
+          appareil, pour trois usages distincts :
+        </p>
+        <ul>
+          <li>
+            <strong>Cookies essentiels</strong> - nécessaires au fonctionnement du site
+            (par exemple, garder votre session ouverte lorsque vous êtes connecté à un compte).
+            Ils ne peuvent pas être désactivés sans empêcher certaines fonctionnalités de
+            marcher.
+          </li>
+          <li>
+            <strong>Cookies de mesure d'audience</strong> - nous aident à comprendre quelles
+            pages sont consultées et comment le site est utilisé, de façon agrégée.
+          </li>
+          <li>
+            <strong>Cookies de préférence</strong> - mémorisent certains choix d'affichage
+            (par exemple la langue).
+          </li>
+        </ul>
+        <p>
+          Vous pouvez à tout moment configurer votre navigateur pour refuser les cookies ou être
+          averti avant qu'ils ne soient déposés. Le blocage de certains cookies peut toutefois
+          limiter certaines fonctionnalités du site, notamment la connexion à un compte.
+        </p>
+
+        <h2>4. Sécurité des données</h2>
+        <p>
+          Nous mettons en œuvre des mesures techniques et organisationnelles raisonnables pour
+          protéger vos informations personnelles : mots de passe stockés de façon chiffrée,
+          accès à l'espace d'administration restreint par rôle, et journalisation des actions
+          sensibles. Aucune méthode de transmission ou de stockage n'est toutefois totalement
+          infaillible, et nous ne pouvons garantir une sécurité absolue.
+        </p>
+
+        <h2>5. Conservation des données</h2>
+        <p>
+          Nous conservons les informations de compte tant que votre compte est actif. Les
+          messages envoyés via le formulaire de contact et les données de mesure d'audience
+          sont conservés pour une durée limitée, raisonnablement nécessaire aux finalités
+          décrites ci-dessus.
+        </p>
+
+        <h2>6. Vos droits</h2>
+        <p>
+          Vous pouvez à tout moment demander à consulter, corriger ou supprimer les
+          informations personnelles que nous détenons à votre sujet. Si vous avez un compte,
+          vous pouvez modifier vous-même votre nom, votre biographie et vos liens sociaux depuis
+          votre profil dans l'espace d'administration. Pour toute autre demande, contactez-nous
+          aux coordonnées ci-dessous.
+        </p>
+
+        <h2>7. Nous contacter</h2>
+        <p>
+          Pour toute question concernant cette politique de confidentialité ou vos données
+          personnelles :
+        </p>
+        <ul>
+          <li>E-mail : <a href="mailto:contact.lespageslibres@gmail.com">contact.lespageslibres@gmail.com</a></li>
+          <li>Téléphone : <a href="tel:+50941897341">+509 41 89 7341</a></li>
+          <li>Adresse : Delmas 75, Port-au-Prince, Haïti</li>
+        </ul>
+
+        <p>
+          Cette politique peut être mise à jour ponctuellement. La date de dernière mise à
+          jour, en haut de cette page, indique la version en vigueur.
+        </p>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,219 @@
+import { Suspense } from 'react';
+import { Search, X } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '@/components/ui/pagination';
+import { getArticles, type Article } from '@/lib/api/articles';
+
+// See the matching comment in categories/[slug]/page.tsx.
+export const dynamic = 'force-dynamic';
+
+export const metadata = {
+  title: 'Tous les articles - Les Pages Libres',
+  description: 'Recherchez et parcourez tous les articles publiés sur Les Pages Libres.',
+};
+
+// This was a heavy page - one big horizontal card per article (large
+// image, tags, view count, chevron) - for what is really just an
+// article search/browse page, and it had no search box at all. Simplified
+// to a single search field plus a plain, compact list, closer to what
+// the sidebar's "Dernières actualités" widget already looks like.
+export default async function ArticlesPage({
+  params: { locale },
+  searchParams,
+}: {
+  params: { locale: string };
+  searchParams: { page?: string; search?: string };
+}) {
+  const page = Number(searchParams?.page) || 1;
+  const search = searchParams?.search || '';
+  const { articles, total, totalPages } = await getArticles({
+    locale,
+    page,
+    search: search || undefined,
+  });
+
+  // Preserves the active search term across pagination links - a plain
+  // href like `?page=2` would otherwise silently drop the current search
+  // when moving to the next page.
+  const pageHref = (p: number) => {
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    params.set('page', String(p));
+    return `?${params.toString()}`;
+  };
+
+  return (
+    <div className="container-custom section-padding max-w-3xl">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Tous les articles</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {total} article{total > 1 ? 's' : ''} {search ? `pour « ${search} »` : 'publiés sur la plateforme'}
+        </p>
+      </div>
+
+      {/* Plain GET form, no client component needed - the browser
+          navigates to ?search=..., this Server Component re-fetches. */}
+      <form action="" method="GET" className="mb-6 flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            name="search"
+            defaultValue={search}
+            placeholder="Rechercher un article..."
+            className="w-full rounded-lg border bg-background py-2 pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        <button
+          type="submit"
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        >
+          Rechercher
+        </button>
+        {search && (
+          <a
+            href={`/${locale}/articles`}
+            className="inline-flex items-center gap-1 px-2 text-sm text-muted-foreground hover:text-foreground"
+            title="Effacer la recherche"
+          >
+            <X className="h-4 w-4" />
+          </a>
+        )}
+      </form>
+
+      <Suspense fallback={<ArticlesSkeleton />}>
+        {articles.length > 0 ? (
+          <div className="divide-y rounded-lg border">
+            {articles.map((article) => (
+              <SimpleArticleRow key={article.id} article={article} locale={locale} />
+            ))}
+          </div>
+        ) : (
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            {search ? 'Aucun article ne correspond à votre recherche.' : 'Aucun article pour le moment.'}
+          </p>
+        )}
+      </Suspense>
+
+      {totalPages > 1 && (
+        <div className="mt-8">
+          <Pagination>
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  href={page > 1 ? pageHref(page - 1) : undefined}
+                  aria-disabled={page <= 1}
+                  className={page <= 1 ? 'pointer-events-none opacity-50' : undefined}
+                />
+              </PaginationItem>
+
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1)
+                .map((p, idx, arr) => (
+                  <PaginationEach key={p} p={p} idx={idx} arr={arr} page={page} pageHref={pageHref} />
+                ))}
+
+              <PaginationItem>
+                <PaginationNext
+                  href={page < totalPages ? pageHref(page + 1) : undefined}
+                  aria-disabled={page >= totalPages}
+                  className={page >= totalPages ? 'pointer-events-none opacity-50' : undefined}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PaginationEach({
+  p,
+  idx,
+  arr,
+  page,
+  pageHref,
+}: {
+  p: number;
+  idx: number;
+  arr: number[];
+  page: number;
+  pageHref: (p: number) => string;
+}) {
+  const prev = arr[idx - 1];
+  const needsEllipsis = prev !== undefined && p - prev > 1;
+
+  return (
+    <>
+      {needsEllipsis && (
+        <PaginationItem>
+          <PaginationEllipsis />
+        </PaginationItem>
+      )}
+      <PaginationItem>
+        <PaginationLink href={pageHref(p)} isActive={p === page}>
+          {p}
+        </PaginationLink>
+      </PaginationItem>
+    </>
+  );
+}
+
+// Simple single-row list item - small thumbnail, title, and a one-line
+// meta row - instead of the previous big card (large image, excerpt,
+// tags, view count) that made a plain search/browse list feel heavy.
+function SimpleArticleRow({ article, locale }: { article: Article; locale: string }) {
+  const formattedDate = new Date(article.createdAt).toLocaleDateString(locale || 'fr', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+
+  return (
+    <a href={`/${locale}/articles/${article.slug}`} className="flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors">
+      <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg bg-muted">
+        {article.coverImage ? (
+          <img
+            src={article.coverImage}
+            alt={article.title}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="h-full w-full bg-gradient-to-br from-primary/20 to-primary/5" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate text-sm font-medium">{article.title}</h3>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          {article.author.name} · {formattedDate}
+          {article.category ? ` · ${article.category.name}` : ''}
+        </p>
+      </div>
+    </a>
+  );
+}
+
+function ArticlesSkeleton() {
+  return (
+    <div className="divide-y rounded-lg border">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 p-3">
+          <Skeleton className="h-14 w-14 rounded-lg" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-3 w-1/3" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

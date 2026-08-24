@@ -1,0 +1,258 @@
+'use client';
+
+import { useState, useCallback } from 'react';
+import { useDropzone } from 'react-dropzone';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { toast } from '@/components/ui/use-toast';
+import { Upload, X, Image, Video, File, CheckCircle } from 'lucide-react';
+import { formatFileSize } from '@/lib/utils/format-file';
+
+interface MediaUploadDialogProps {
+  onUploadComplete?: (media: any) => void;
+  children?: React.ReactNode;
+}
+
+export function MediaUploadDialog({ onUploadComplete, children }: MediaUploadDialogProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [mediaType, setMediaType] = useState<'image' | 'video' | 'audio'>('image');
+  const [altText, setAltText] = useState('');
+  const [caption, setCaption] = useState('');
+
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    setFiles((prev) => [...prev, ...acceptedFiles]);
+  }, []);
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'image/*': ['.jpeg', '.jpg', '.png', '.gif', '.webp', '.svg'],
+      'video/*': ['.mp4', '.webm', '.mov'],
+      'audio/*': ['.mp3', '.wav', '.ogg'],
+    },
+    maxSize: 50 * 1024 * 1024, // 50MB
+  });
+
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpload = async () => {
+    if (files.length === 0) {
+      toast({
+        title: 'Aucun fichier sélectionné',
+        description: 'Veuillez sélectionner au moins un fichier à téléverser.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setUploading(true);
+    setProgress(0);
+
+    try {
+      const formData = new FormData();
+      files.forEach((file) => {
+        formData.append('files', file);
+      });
+      formData.append('type', mediaType);
+      formData.append('altText', altText);
+      formData.append('caption', caption);
+
+      const response = await fetch('/api/media/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error('Échec du téléversement');
+
+      const data = await response.json();
+
+      toast({
+        title: 'Téléversement réussi',
+        description: `${files.length} fichier(s) téléversé(s) avec succès.`,
+      });
+
+      if (onUploadComplete) onUploadComplete(data);
+      setIsOpen(false);
+      setFiles([]);
+      setAltText('');
+      setCaption('');
+      setProgress(100);
+    } catch (error) {
+      toast({
+        title: 'Échec du téléversement',
+        description: 'Une erreur est survenue lors du téléversement de vos fichiers. Veuillez réessayer.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUploading(false);
+      setProgress(0);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        {children || <Button className="gap-2"><Upload className="h-4 w-4" /> Téléverser un média</Button>}
+      </DialogTrigger>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Téléverser un média</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-6">
+          {/* Drop Zone */}
+          <div
+            {...getRootProps()}
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
+              isDragActive
+                ? 'border-primary bg-primary/5'
+                : 'border-muted-foreground/25 hover:border-primary/50'
+            }`}
+          >
+            <input {...getInputProps()} />
+            <Upload className="mx-auto h-12 w-12 text-muted-foreground" />
+            <p className="mt-2 text-sm font-medium">
+              {isDragActive ? 'Déposez les fichiers ici' : 'Glissez-déposez des fichiers ici'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              ou cliquez pour parcourir (max 50 Mo par fichier)
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2 justify-center">
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs">
+                <Image className="h-3 w-3" /> Images
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs">
+                <Video className="h-3 w-3" /> Vidéos
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs">
+                <File className="h-3 w-3" /> Audio
+              </span>
+            </div>
+          </div>
+
+          {/* File List */}
+          {files.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium">Fichiers sélectionnés</h4>
+              <div className="max-h-40 overflow-y-auto space-y-2">
+                {files.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between rounded-lg border p-2"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      {file.type.startsWith('image/') && (
+                        <Image className="h-5 w-5 text-muted-foreground" />
+                      )}
+                      {file.type.startsWith('video/') && (
+                        <Video className="h-5 w-5 text-muted-foreground" />
+                      )}
+                      {file.type.startsWith('audio/') && (
+                        <File className="h-5 w-5 text-muted-foreground" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm truncate">{file.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatFileSize(file.size)}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => removeFile(index)}
+                      disabled={uploading}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Metadata Fields */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="mediaType">Type de média</Label>
+              <Select
+                value={mediaType}
+                onValueChange={(value: 'image' | 'video' | 'audio') => setMediaType(value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sélectionner un type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="image">Image</SelectItem>
+                  <SelectItem value="video">Vidéo</SelectItem>
+                  <SelectItem value="audio">Audio</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="altText">Texte alternatif</Label>
+              <Input
+                id="altText"
+                placeholder="Décrivez le média..."
+                value={altText}
+                onChange={(e) => setAltText(e.target.value)}
+              />
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="caption">Légende</Label>
+            <Input
+              id="caption"
+              placeholder="Ajouter une légende..."
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+            />
+          </div>
+
+          {/* Progress */}
+          {uploading && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Téléversement en cours...</span>
+                <span>{progress}%</span>
+              </div>
+              <Progress value={progress} className="h-2" />
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setIsOpen(false)} disabled={uploading}>
+              Annuler
+            </Button>
+            <Button onClick={handleUpload} disabled={uploading || files.length === 0}>
+              {uploading ? 'Téléversement en cours...' : `Téléverser ${files.length} fichier(s)`}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

@@ -1,0 +1,52 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# Next.js build output
+/.next/
+/out/
+.next-stale-*/
+
+# Production build
+/build
+
+# Environment variables - NEVER commit these. .env.local and
+# .env.production.local hold real secrets (SUPABASE_SERVICE_ROLE_KEY,
+# SMTP credentials, etc.) - this file was empty before, meaning nothing
+# stopped these from being committed and pushed to a remote the moment
+# `git init && git add .` ran.
+.env
+.env*.local
+.env.local
+.env.production.local
+.env.development.local
+.env.test.local
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Testing / coverage
+/coverage
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+*.pem
+.vscode/
+.idea/
+
+# One-off diagnostic/cleanup scripts written during this performance
+# pass - useful to keep around locally, but not meant to ship as part of
+# the deployed app.
+scan-ad-media.mjs
+fix-ad-media.mjs

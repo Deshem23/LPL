@@ -1,0 +1,16 @@
+export const locales = ['fr', 'en', 'ht'] as const;
+export const defaultLocale = 'fr' as const;
+
+export type Locale = (typeof locales)[number];
+
+export const localeNames: Record<Locale, string> = {
+  fr: 'Français',
+  en: 'English',
+  ht: 'Kreyòl Ayisyen',
+};
+
+export const localeFlags: Record<Locale, string> = {
+  fr: '🇫🇷',
+  en: '🇬🇧',
+  ht: '🇭🇹',
+};

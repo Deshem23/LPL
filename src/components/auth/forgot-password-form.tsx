@@ -1,0 +1,123 @@
+'use client';
+
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { Button } from '@/components/ui/button';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { useToast } from '@/components/ui/use-toast';
+import { Loader2, CheckCircle2 } from 'lucide-react';
+import { resetPassword } from '@/lib/auth/actions';
+
+// Was referenced by src/app/forgot-password/page.tsx but never actually
+// existed - that page has been a broken import (and a real TypeScript
+// error) this whole time. resetPassword() itself (lib/auth/actions.ts)
+// was already implemented and working; it just had no form calling it.
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
+
+export function ForgotPasswordForm() {
+  const [isLoading, setIsLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const { toast } = useToast();
+
+  const form = useForm<ForgotPasswordFormValues>({
+    resolver: zodResolver(forgotPasswordSchema),
+    defaultValues: { email: '' },
+  });
+
+  async function onSubmit(data: ForgotPasswordFormValues) {
+    setIsLoading(true);
+    try {
+      const result = await resetPassword(data.email);
+
+      if (result.error) {
+        toast({
+          title: 'Something went wrong',
+          description: result.error,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Always show the same success state regardless of whether the
+      // email actually matched an account - confirming or denying that
+      // an email address has an account here would let anyone probe for
+      // valid addresses.
+      setSent(true);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Something went wrong. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  if (sent) {
+    return (
+      <div className="rounded-lg border bg-card p-6 shadow-sm text-center space-y-3">
+        <CheckCircle2 className="mx-auto h-10 w-10 text-primary" />
+        <p className="font-medium">Check your email</p>
+        <p className="text-sm text-muted-foreground">
+          If an account exists for that address, we&apos;ve sent a link to reset your password.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border bg-card p-6 shadow-sm">
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder="you@example.com"
+                    type="email"
+                    autoComplete="email"
+                    disabled={isLoading}
+                    className="h-11"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <Button type="submit" className="w-full h-11" disabled={isLoading}>
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Sending...
+              </>
+            ) : (
+              'Send reset link'
+            )}
+          </Button>
+        </form>
+      </Form>
+    </div>
+  );
+}

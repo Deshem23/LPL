@@ -1,0 +1,93 @@
+'use client';
+
+import Link from 'next/link';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import {
+  PlusCircle,
+  FileEdit,
+  ImagePlus,
+  UserPlus,
+  CalendarPlus,
+  Settings
+} from 'lucide-react';
+
+const actions = [
+  {
+    title: 'Nouvel article',
+    description: 'Créer un nouvel article',
+    icon: PlusCircle,
+    href: '/admin/articles/new',
+    color: 'bg-blue-500/10 text-blue-500',
+  },
+  {
+    title: 'Modifier un article',
+    description: 'Gérer les articles existants',
+    icon: FileEdit,
+    href: '/admin/articles',
+    color: 'bg-green-500/10 text-green-500',
+  },
+  {
+    title: 'Ajouter un média',
+    description: 'Ajouter des images ou vidéos',
+    icon: ImagePlus,
+    href: '/admin/media',
+    color: 'bg-purple-500/10 text-purple-500',
+  },
+  {
+    title: 'Ajouter un utilisateur',
+    description: "Inviter un membre de l'équipe",
+    icon: UserPlus,
+    href: '/admin/users',
+    color: 'bg-orange-500/10 text-orange-500',
+  },
+  {
+    title: 'Programmer du contenu',
+    description: 'Planifier de futurs articles',
+    icon: CalendarPlus,
+    href: '/admin/articles?filter=scheduled',
+    color: 'bg-pink-500/10 text-pink-500',
+  },
+  {
+    title: 'Paramètres',
+    description: 'Configurer la plateforme',
+    icon: Settings,
+    href: '/admin/settings',
+    color: 'bg-gray-500/10 text-gray-500',
+  },
+];
+
+export function QuickActions() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Actions rapides</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-2">
+          {actions.map((action) => {
+            const Icon = action.icon;
+            return (
+              <Button
+                key={action.title}
+                variant="outline"
+                className="h-auto flex-col items-center justify-center gap-1 p-4"
+                asChild
+              >
+                <Link href={action.href}>
+                  <div className={`rounded-full p-2 ${action.color}`}>
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <span className="text-xs font-medium">{action.title}</span>
+                  <span className="hidden text-[10px] text-muted-foreground sm:inline">
+                    {action.description}
+                  </span>
+                </Link>
+              </Button>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

@@ -1,0 +1,320 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/components/ui/use-toast';
+import { ExternalLink, Loader2, Upload } from 'lucide-react';
+import { defaultLocale } from '@/i18n/config';
+
+interface OwnProfile {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  avatar_url?: string;
+  bio?: string;
+  role_title?: string;
+  twitter?: string;
+  linkedin?: string;
+  website?: string;
+}
+
+// Self-service "my profile" page - reachable from the account dropdown
+// in admin/layout.tsx, which previously had a "Profile" menu item with
+// no href/onClick at all (it did nothing when clicked). Before this,
+// the ONLY way to set your own bio/socials was the one-time first-login
+// "complete your profile" gate, or - for an admin only - editing another
+// user's row in /admin/users. Every role can reach this page (see
+// middleware.ts's roleMap: unlisted /admin/* paths default to any
+// authenticated role) and it's what actually makes the bio shown on
+// /author/[id] and under each article editable after that first login.
+export default function AdminProfilePage() {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [profile, setProfile] = useState<OwnProfile | null>(null);
+  const [form, setForm] = useState({
+    name: '',
+    bio: '',
+    role_title: '',
+    twitter: '',
+    linkedin: '',
+    website: '',
+    avatar_url: '',
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/users/profile', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled || !data.user) return;
+        setProfile(data.user);
+        setForm({
+          name: data.user.name || '',
+          bio: data.user.bio || '',
+          role_title: data.user.role_title || '',
+          twitter: data.user.twitter || '',
+          linkedin: data.user.linkedin || '',
+          website: data.user.website || '',
+          avatar_url: data.user.avatar_url || '',
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Uploads the picked file to Supabase Storage (via /api/media/upload,
+  // now that it requires a logged-in session - see the route's own
+  // comment) and stores the resulting public URL, rather than the old
+  // pattern elsewhere in this app of stuffing a base64 data: URI
+  // straight into the avatar_url column.
+  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setUploadingAvatar(true);
+    try {
+      const body = new FormData();
+      body.append('files', file);
+      body.append('type', 'avatar');
+      const res = await fetch('/api/media/upload', { method: 'POST', body });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok || !result.media?.[0]?.url) {
+        throw new Error(result.error || "Échec du téléversement de l'image.");
+      }
+      setForm((prev) => ({ ...prev, avatar_url: result.media[0].url }));
+      toast({
+        title: 'Photo mise à jour',
+        description: "N'oubliez pas d'enregistrer pour confirmer.",
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Erreur',
+        description: err.message || "Impossible de téléverser cette image.",
+        variant: 'destructive',
+      });
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch('/api/users/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || 'Échec de la mise à jour.');
+      setProfile(body.user);
+      // Tells admin/layout.tsx's sidebar/header (which persists across
+      // admin route changes and never remounts here) to reload the real
+      // name/avatar instead of the caller having to hard-refresh to see
+      // a just-uploaded photo reflected outside this page.
+      window.dispatchEvent(new Event('profile-updated'));
+      toast({
+        title: 'Profil mis à jour',
+        description: 'Vos informations ont été enregistrées.',
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Erreur',
+        description: err.message || "Impossible d'enregistrer votre profil.",
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="max-w-2xl space-y-6">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return <p className="text-sm text-destructive">Impossible de charger votre profil.</p>;
+  }
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight">Mon profil</h2>
+        <p className="text-muted-foreground">
+          Ces informations - dont votre biographie - apparaissent publiquement sur votre page
+          auteur et sous les articles que vous publiez.
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <CardTitle>Informations publiques</CardTitle>
+              <CardDescription>Visible par tous les visiteurs du site.</CardDescription>
+            </div>
+            <Link
+              href={`/${defaultLocale}/author/${profile.id}`}
+              target="_blank"
+              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline whitespace-nowrap"
+            >
+              Voir ma page publique
+              <ExternalLink className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <Avatar className="h-16 w-16">
+                  <AvatarImage src={form.avatar_url || undefined} />
+                  <AvatarFallback className="bg-primary/20 text-primary text-xl font-bold">
+                    {form.name.charAt(0).toUpperCase() || '?'}
+                  </AvatarFallback>
+                </Avatar>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingAvatar}
+                  className="absolute -bottom-1 -right-1 rounded-full bg-primary p-1.5 text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60"
+                  aria-label="Changer la photo de profil"
+                >
+                  {uploadingAvatar ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Upload className="h-3 w-3" />
+                  )}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleAvatarFile}
+                />
+              </div>
+              <div className="flex-1">
+                <Label htmlFor="avatar_url">Photo de profil</Label>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Cliquez sur l&apos;icône pour téléverser une image (JPG, PNG, WebP - 5 Mo max),
+                  ou collez directement une URL ci-dessous.
+                </p>
+                <Input
+                  id="avatar_url"
+                  placeholder="https://..."
+                  value={form.avatar_url}
+                  onChange={(e) => setForm({ ...form, avatar_url: e.target.value })}
+                  className="mt-1.5"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="name">Nom</Label>
+                <Input
+                  id="name"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="mt-1.5"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="role_title">Titre / fonction</Label>
+                <Input
+                  id="role_title"
+                  placeholder="Journaliste, Rédacteur en chef..."
+                  value={form.role_title}
+                  onChange={(e) => setForm({ ...form, role_title: e.target.value })}
+                  className="mt-1.5"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="bio">Biographie</Label>
+              <Textarea
+                id="bio"
+                placeholder="Présentez-vous en quelques lignes..."
+                value={form.bio}
+                onChange={(e) => setForm({ ...form, bio: e.target.value })}
+                rows={4}
+                className="mt-1.5 resize-none"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Affichée sur votre page auteur et sous chacun de vos articles.
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <Label htmlFor="twitter">Twitter</Label>
+                <Input
+                  id="twitter"
+                  placeholder="nom_utilisateur"
+                  value={form.twitter}
+                  onChange={(e) => setForm({ ...form, twitter: e.target.value })}
+                  className="mt-1.5"
+                />
+              </div>
+              <div>
+                <Label htmlFor="linkedin">LinkedIn</Label>
+                <Input
+                  id="linkedin"
+                  placeholder="nom_utilisateur"
+                  value={form.linkedin}
+                  onChange={(e) => setForm({ ...form, linkedin: e.target.value })}
+                  className="mt-1.5"
+                />
+              </div>
+              <div>
+                <Label htmlFor="website">Site web</Label>
+                <Input
+                  id="website"
+                  placeholder="https://..."
+                  value={form.website}
+                  onChange={(e) => setForm({ ...form, website: e.target.value })}
+                  className="mt-1.5"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t pt-4">
+              <p className="text-xs text-muted-foreground">
+                {profile.email} · {profile.role}
+              </p>
+              <Button type="submit" disabled={saving}>
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Enregistrer
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

@@ -1,0 +1,188 @@
+export interface WeatherData {
+  city: string;
+  temperature: number;
+  feelsLike: number;
+  condition: string;
+  icon: string;
+  humidity: number;
+  windSpeed: number;
+  // "HH:mm", already in the location's local time - Open-Meteo's
+  // `timezone=auto` (below) resolves the sunrise/sunset timestamps to the
+  // requested lat/lon's own timezone, not the server's.
+  sunrise: string;
+  sunset: string;
+  forecast: {
+    day: string;
+    temperature: number;
+    condition: string;
+    icon: string;
+  }[];
+}
+
+// Real weather, via Open-Meteo (https://open-meteo.com) - free, no API key,
+// and CORS-enabled for direct browser calls, which is why this file can
+// stay callable from 'use client' components (weather-widget.tsx,
+// weather/page.tsx) exactly like before, just with real data now instead
+// of the old hardcoded mock object.
+
+// The 10 cities always offered on the weather page: Port-au-Prince plus
+// the chef-lieu (capital) of each of Haiti's other 9 départements. Coordinates
+// are hardcoded rather than geocoded - more reliable than resolving accented
+// Haitian city names through a generic geocoder, and it means these 10
+// always work even if the geocoding API has a bad day.
+export interface HaitiCity {
+  name: string;
+  department: string;
+  lat: number;
+  lon: number;
+}
+
+export const HAITI_CITIES: HaitiCity[] = [
+  { name: 'Port-au-Prince', department: 'Ouest', lat: 18.5944, lon: -72.3074 },
+  { name: 'Jacmel', department: 'Sud-Est', lat: 18.2342, lon: -72.5347 },
+  { name: 'Cap-Haïtien', department: 'Nord', lat: 19.7592, lon: -72.2014 },
+  { name: 'Fort-Liberté', department: 'Nord-Est', lat: 19.6667, lon: -71.8333 },
+  { name: 'Gonaïves', department: 'Artibonite', lat: 19.4515, lon: -72.6889 },
+  { name: 'Hinche', department: 'Centre', lat: 19.15, lon: -72.0167 },
+  { name: 'Les Cayes', department: 'Sud', lat: 18.2, lon: -73.75 },
+  { name: 'Jérémie', department: 'Grand’Anse', lat: 18.6534, lon: -74.1136 },
+  { name: 'Port-de-Paix', department: 'Nord-Ouest', lat: 19.9333, lon: -72.8333 },
+  { name: 'Miragoâne', department: 'Nippes', lat: 18.4444, lon: -73.0872 },
+];
+
+const DAY_LABELS_FR = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+
+// WMO weather codes (what Open-Meteo returns) mapped to a French condition
+// label + emoji icon, matching the site's existing icon-as-emoji convention.
+function describeWeatherCode(code: number): { condition: string; icon: string } {
+  if (code === 0) return { condition: 'Ciel dégagé', icon: '☀️' };
+  if (code === 1) return { condition: 'Principalement dégagé', icon: '🌤️' };
+  if (code === 2) return { condition: 'Partiellement nuageux', icon: '⛅' };
+  if (code === 3) return { condition: 'Couvert', icon: '☁️' };
+  if (code === 45 || code === 48) return { condition: 'Brumeux', icon: '🌫️' };
+  if (code >= 51 && code <= 57) return { condition: 'Bruine', icon: '🌦️' };
+  if (code >= 61 && code <= 67) return { condition: 'Pluie', icon: '🌧️' };
+  if (code >= 80 && code <= 82) return { condition: 'Averses', icon: '🌧️' };
+  if (code >= 71 && code <= 77) return { condition: 'Neige', icon: '🌨️' };
+  if (code >= 95) return { condition: 'Orage', icon: '⛈️' };
+  return { condition: 'Variable', icon: '🌡️' };
+}
+
+function findHaitiCity(cityQuery: string): HaitiCity | undefined {
+  const q = cityQuery.trim().toLowerCase();
+  return HAITI_CITIES.find(
+    (c) => c.name.toLowerCase() === q || c.name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '') === q.normalize('NFD').replace(/[̀-ͯ]/g, '')
+  );
+}
+
+// Falls back to Open-Meteo's free geocoding API for any city outside the
+// 10 Haiti cities above (e.g. someone searches "Paris" or "Miami").
+async function geocodeCity(cityQuery: string): Promise<{ name: string; lat: number; lon: number } | null> {
+  try {
+    const res = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityQuery)}&count=1&language=fr`
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    const first = json?.results?.[0];
+    if (!first) return null;
+    return { name: first.name, lat: first.latitude, lon: first.longitude };
+  } catch (error) {
+    console.error('Error geocoding city:', error);
+    return null;
+  }
+}
+
+// Weather doesn't meaningfully change minute to minute, but this was an
+// uncached call straight to Open-Meteo from the browser on every single
+// page load - the sidebar's WeatherWidget defaults to showWeather=true,
+// so nearly every page (home, every category, every subcategory) fired
+// this external request fresh every time, adding a real extra network
+// round trip on top of this app's own data fetching. A short
+// sessionStorage cache means only the first page in a visit pays for it;
+// every page after that for the next 15 minutes reads the cached result
+// instantly instead.
+const WEATHER_CACHE_TTL_MS = 15 * 60 * 1000;
+
+function readWeatherCache(cacheKey: string): WeatherData | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(cacheKey);
+    if (!raw) return null;
+    const { data, cachedAt } = JSON.parse(raw);
+    if (typeof cachedAt !== 'number' || Date.now() - cachedAt > WEATHER_CACHE_TTL_MS) return null;
+    return data as WeatherData;
+  } catch {
+    return null;
+  }
+}
+
+function writeWeatherCache(cacheKey: string, data: WeatherData) {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(cacheKey, JSON.stringify({ data, cachedAt: Date.now() }));
+  } catch {
+    // sessionStorage can throw (private browsing, quota) - caching is
+    // purely an optimization, never something the widget should break on.
+  }
+}
+
+export async function getWeather(city: string = 'Port-au-Prince'): Promise<WeatherData> {
+  const cacheKey = `lpl_weather_${city.trim().toLowerCase()}`;
+  const cached = readWeatherCache(cacheKey);
+  if (cached) return cached;
+
+  const haitiCity = findHaitiCity(city);
+  const location = haitiCity
+    ? { name: haitiCity.name, lat: haitiCity.lat, lon: haitiCity.lon }
+    : (await geocodeCity(city)) || { name: HAITI_CITIES[0].name, lat: HAITI_CITIES[0].lat, lon: HAITI_CITIES[0].lon };
+
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${location.lat}&longitude=${location.lon}` +
+    `&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code` +
+    `&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset` +
+    `&timezone=auto&forecast_days=5`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Weather API error: ${res.status}`);
+  }
+  const data = await res.json();
+
+  const current = data.current;
+  const { condition, icon } = describeWeatherCode(current.weather_code);
+
+  const forecast = (data.daily?.time || []).map((dateStr: string, i: number) => {
+    const { icon: dayIcon } = describeWeatherCode(data.daily.weather_code[i]);
+    const dayIndex = new Date(dateStr).getUTCDay();
+    return {
+      day: DAY_LABELS_FR[dayIndex],
+      temperature: Math.round(data.daily.temperature_2m_max[i]),
+      condition: describeWeatherCode(data.daily.weather_code[i]).condition,
+      icon: dayIcon,
+    };
+  });
+
+  // Open-Meteo returns these as local-time ISO strings (no "Z"/offset,
+  // since `timezone=auto` already resolved them) like "2026-08-23T05:52" -
+  // slicing out just the "HH:mm" is simpler and avoids the Date object
+  // re-interpreting the string in the browser's own timezone.
+  const todaySunrise: string | undefined = data.daily?.sunrise?.[0];
+  const todaySunset: string | undefined = data.daily?.sunset?.[0];
+
+  const weatherData: WeatherData = {
+    city: location.name,
+    temperature: Math.round(current.temperature_2m),
+    feelsLike: Math.round(current.apparent_temperature),
+    condition,
+    icon,
+    humidity: Math.round(current.relative_humidity_2m),
+    windSpeed: Math.round(current.wind_speed_10m),
+    sunrise: todaySunrise ? todaySunrise.slice(11, 16) : '--:--',
+    sunset: todaySunset ? todaySunset.slice(11, 16) : '--:--',
+    forecast,
+  };
+
+  writeWeatherCache(cacheKey, weatherData);
+  return weatherData;
+}

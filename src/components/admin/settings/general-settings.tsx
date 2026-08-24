@@ -1,0 +1,139 @@
+'use client';
+
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
+interface GeneralSettingsProps {
+  settings: any;
+  onChange: (settings: any) => void;
+}
+
+export function GeneralSettings({ settings, onChange }: GeneralSettingsProps) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Informations générales</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="siteName">Nom du site</Label>
+            <Input
+              id="siteName"
+              value={settings.siteName}
+              onChange={(e) => onChange({ ...settings, siteName: e.target.value })}
+              className="mt-1.5"
+            />
+          </div>
+          <div>
+            <Label htmlFor="siteUrl">URL du site</Label>
+            <Input
+              id="siteUrl"
+              value={settings.siteUrl}
+              onChange={(e) => onChange({ ...settings, siteUrl: e.target.value })}
+              className="mt-1.5"
+            />
+          </div>
+        </div>
+        <div>
+          <Label htmlFor="siteDescription">Description du site</Label>
+          <Textarea
+            id="siteDescription"
+            value={settings.siteDescription}
+            onChange={(e) => onChange({ ...settings, siteDescription: e.target.value })}
+            rows={3}
+            className="mt-1.5 resize-none"
+          />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <Label htmlFor="defaultLanguage">Langue par défaut</Label>
+            <Select
+              value={settings.defaultLanguage}
+              onValueChange={(value) => onChange({ ...settings, defaultLanguage: value })}
+            >
+              <SelectTrigger className="mt-1.5">
+                <SelectValue placeholder="Langue" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="fr">Français</SelectItem>
+                <SelectItem value="en">English</SelectItem>
+                <SelectItem value="ht">Kreyòl</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="timezone">Fuseau horaire</Label>
+            <Select
+              value={settings.timezone}
+              onValueChange={(value) => onChange({ ...settings, timezone: value })}
+            >
+              <SelectTrigger className="mt-1.5">
+                <SelectValue placeholder="Fuseau horaire" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Europe/Paris">Europe/Paris</SelectItem>
+                <SelectItem value="America/Port-au-Prince">America/Port-au-Prince</SelectItem>
+                <SelectItem value="America/New_York">America/New_York</SelectItem>
+                <SelectItem value="UTC">UTC</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="articlesPerPage">Articles par page</Label>
+            <Select
+              value={settings.articlesPerPage}
+              onValueChange={(value) => onChange({ ...settings, articlesPerPage: value })}
+            >
+              <SelectTrigger className="mt-1.5">
+                <SelectValue placeholder="Articles par page" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="6">6</SelectItem>
+                <SelectItem value="12">12</SelectItem>
+                <SelectItem value="24">24</SelectItem>
+                <SelectItem value="48">48</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="flex flex-col gap-4 pt-4 border-t">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm">Commentaires</Label>
+              <p className="text-xs text-muted-foreground">
+                Activer/désactiver les commentaires sur les articles
+              </p>
+            </div>
+            <Switch
+              checked={settings.commentsEnabled}
+              onCheckedChange={(checked) => onChange({ ...settings, commentsEnabled: checked })}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm">Inscription</Label>
+              <p className="text-xs text-muted-foreground">
+                Permettre aux nouveaux utilisateurs de s&apos;inscrire
+              </p>
+            </div>
+            <Switch
+              checked={settings.registrationEnabled}
+              onCheckedChange={(checked) => onChange({ ...settings, registrationEnabled: checked })}
+            />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

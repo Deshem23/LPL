@@ -1,0 +1,70 @@
+import { createClient } from '@/lib/supabase/server';
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: 'admin' | 'editor' | 'writer' | 'contributor';
+  status: 'active' | 'inactive' | 'suspended';
+  created_at: string;
+  updated_at: string;
+  last_login?: string;
+  articles_count?: number;
+}
+
+/**
+ * Get all users from the database (Server-side)
+ * Use this in Server Components only
+ */
+export async function getUsersServer(): Promise<User[]> {
+  const supabase = createClient();
+  
+  const { data, error } = await supabase
+    .from('users')
+    .select(`
+      *,
+      articles:articles(count)
+    `)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching users:', error);
+    return [];
+  }
+
+  return data.map((user: any) => ({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role || 'contributor',
+    status: user.status || 'active',
+    created_at: user.created_at,
+    updated_at: user.updated_at,
+    last_login: user.last_login,
+    articles_count: user.articles?.[0]?.count || 0,
+  }));
+}
+
+/**
+ * Get user statistics (Server-side)
+ */
+export async function getUserStatsServer() {
+  const supabase = createClient();
+  
+  const { count: totalUsers } = await supabase
+    .from('users')
+    .select('*', { count: 'exact', head: true });
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  
+  const { count: activeUsers } = await supabase
+    .from('users')
+    .select('*', { count: 'exact', head: true })
+    .gte('last_login', thirtyDaysAgo.toISOString());
+
+  return {
+    totalUsers: totalUsers || 0,
+    activeUsers: activeUsers || 0,
+  };
+}

@@ -1,0 +1,29 @@
+// Server Component: fetches the article server-side and passes it down
+// to the (client) modal. It used to be a 'use client' component that
+// called getArticle() directly in a useEffect - since getArticle() now
+// hits the real, service-role-backed database, that would have broken
+// this page in the browser (see src/lib/supabase/admin.ts). Loading UI
+// is provided by the existing src/app/[locale]/articles/loading.tsx,
+// which Next.js applies to this nested route automatically.
+import { notFound } from 'next/navigation';
+import { getArticle } from '@/lib/api/articles';
+import { ArticleModal } from '@/components/articles/article-modal';
+
+// See the matching comment in categories/[slug]/page.tsx - avoids serving
+// a stale cached article (or a stale not-found) after it's edited/published.
+export const dynamic = 'force-dynamic';
+
+interface ArticlePageProps {
+  params: { locale: string; slug: string };
+}
+
+export default async function ArticlePage({ params }: ArticlePageProps) {
+  const { locale, slug } = params;
+  const article = await getArticle({ locale, slug });
+
+  if (!article) {
+    notFound();
+  }
+
+  return <ArticleModal article={article} locale={locale} />;
+}

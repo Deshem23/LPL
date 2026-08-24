@@ -1,0 +1,76 @@
+import type { MetadataRoute } from 'next';
+import { getSiteSettings } from '@/lib/services/settings-service';
+import { getCategoriesWithSubcategories } from '@/lib/services/category-service';
+import { getArticles } from '@/lib/api/articles';
+import { defaultLocale } from '@/i18n/config';
+
+// Next's file-convention sitemap - served automatically at /sitemap.xml,
+// no route file needed. This used to genuinely not exist: the only prior
+// attempt (src/lib/seo/sitemap.ts) sat outside any path Next recognizes
+// and was never imported, so /sitemap.xml 404'd and Settings > SEO's
+// "Sitemap activé" toggle had nothing real to turn on or off.
+//
+// Scope note: the site's URLs are locale-prefixed (/fr/..., /en/...,
+// /ht/...) but article/category content itself isn't stored per-locale,
+// so this lists each URL once under the default locale rather than
+// tripling every entry across all three prefixes.
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const settings = await getSiteSettings();
+  const baseUrl = (settings.site_url || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+
+  const home: MetadataRoute.Sitemap = [
+    { url: `${baseUrl}/${defaultLocale}`, changeFrequency: 'hourly', priority: 1 },
+  ];
+
+  // Settings > SEO > "Sitemap activé" off - keep the sitemap valid (an
+  // empty one can confuse some crawlers) but limit it to the homepage,
+  // which is the practical equivalent of "there's nothing to index here".
+  if (!settings.sitemap_enabled) {
+    return home;
+  }
+
+  const staticPaths = ['categories', 'weather', 'about', 'contact'];
+  const staticPages: MetadataRoute.Sitemap = staticPaths.map((path) => ({
+    url: `${baseUrl}/${defaultLocale}/${path}`,
+    changeFrequency: 'daily',
+    priority: 0.6,
+  }));
+
+  let categoryPages: MetadataRoute.Sitemap = [];
+  try {
+    const categories = await getCategoriesWithSubcategories(false);
+    categoryPages = categories.flatMap((cat) => {
+      const entries: MetadataRoute.Sitemap = [
+        { url: `${baseUrl}/${defaultLocale}/categories/${cat.slug}`, changeFrequency: 'daily', priority: 0.7 },
+      ];
+      for (const sub of cat.subcategories || []) {
+        entries.push({
+          url: `${baseUrl}/${defaultLocale}/categories/${cat.slug}/${sub.slug}`,
+          changeFrequency: 'daily',
+          priority: 0.6,
+        });
+      }
+      return entries;
+    });
+  } catch (error) {
+    console.error('sitemap: error fetching categories', error);
+  }
+
+  let articlePages: MetadataRoute.Sitemap = [];
+  try {
+    // Capped at 1000 - a much larger site would need to split this into
+    // multiple sitemap files (a sitemap index), but this covers the
+    // platform's current scale in one file.
+    const { articles } = await getArticles({ locale: defaultLocale, limit: 1000 });
+    articlePages = articles.map((article) => ({
+      url: `${baseUrl}/${defaultLocale}/articles/${article.slug}`,
+      lastModified: new Date(article.updatedAt),
+      changeFrequency: 'weekly',
+      priority: 0.5,
+    }));
+  } catch (error) {
+    console.error('sitemap: error fetching articles', error);
+  }
+
+  return [...home, ...staticPages, ...categoryPages, ...articlePages];
+}

@@ -1,0 +1,80 @@
+import { NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth/actions';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { getSiteSettings, updateSiteSettings } from '@/lib/services/settings-service';
+
+// Admin-only settings CRUD. Reachability is already gated at /admin/settings
+// by middleware (admin role only) - same auth-only pattern as
+// /api/ads and /api/articles for the actual API layer.
+
+// GET reads no request params, which makes it eligible for Next's static
+// caching by default - see the matching note in api/admin/stats/route.ts.
+// Without this, a settings change could keep showing the old value back
+// to whoever loads the settings page next.
+export const dynamic = 'force-dynamic';
+
+export async function GET() {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const settings = await getSiteSettings();
+    // Never ship the raw SMTP password to the client - just whether one
+    // is set, so the settings page can show a placeholder without ever
+    // being able to read the real secret back out.
+    const { smtp_password, ...rest } = settings;
+    return NextResponse.json({
+      settings: { ...rest, smtp_password_set: !!smtp_password },
+    });
+  } catch (error) {
+    console.error('Error fetching settings:', error);
+    return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // getCurrentUser() only returns the raw Supabase auth user - its
+    // user_metadata.role can drift from the real role in public.users
+    // (see lib/auth/actions.ts), so look the role up directly rather
+    // than trusting the JWT claim for this admin-only write.
+    const supabase = createAdminClient();
+    const { data: profile } = await supabase.from('users').select('role').eq('id', user.id).single();
+    if (profile?.role !== 'admin') {
+      return NextResponse.json({ error: 'Seuls les administrateurs peuvent modifier les paramètres.' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { smtp_password, ...fields } = body;
+
+    // Only touch smtp_password if the client actually sent a new,
+    // non-empty value - otherwise leave the stored secret untouched
+    // (the client never receives the real value back, so an unedited
+    // field arrives as undefined/empty, not the old value).
+    const updatePayload: Record<string, any> = { ...fields };
+    if (typeof smtp_password === 'string' && smtp_password.trim() !== '') {
+      updatePayload.smtp_password = smtp_password.trim();
+    }
+
+    const result = await updateSiteSettings(updatePayload, user.id);
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+
+    const { smtp_password: _omit, ...rest } = result.settings!;
+    return NextResponse.json({
+      success: true,
+      settings: { ...rest, smtp_password_set: !!result.settings!.smtp_password },
+    });
+  } catch (error) {
+    console.error('Error updating settings:', error);
+    return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 });
+  }
+}

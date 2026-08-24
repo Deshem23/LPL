@@ -1,0 +1,28 @@
+import { Metadata } from 'next';
+import { ForgotPasswordForm } from '@/components/auth/forgot-password-form';
+import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'Forgot Password - Les Pages Libres',
+  description: 'Reset your password.',
+};
+
+export default function ForgotPasswordPage() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-secondary/5 p-4">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-primary">Les Pages Libres</h1>
+          <p className="text-muted-foreground mt-2">Reset your password</p>
+        </div>
+        <ForgotPasswordForm />
+        <p className="text-center text-sm text-muted-foreground mt-4">
+          Remember your password?{' '}
+          <Link href="/lpl-access-2026" className="text-primary hover:underline font-medium">
+            Login
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
+}

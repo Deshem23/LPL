@@ -1,0 +1,273 @@
+'use client';
+
+import { useState } from 'react';
+import Image from 'next/image';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { format } from 'date-fns';
+import { 
+  Image as ImageIcon, 
+  Video, 
+  Music, 
+  MoreVertical, 
+  Trash2, 
+  Edit, 
+  Copy, 
+  Download,
+  Eye,
+  ExternalLink
+} from 'lucide-react';
+
+interface MediaItem {
+  id: string;
+  url: string;
+  type: 'image' | 'video' | 'audio';
+  title: string;
+  altText: string;
+  caption: string;
+  size: number;
+  createdAt: string;
+  articleCount?: number;
+}
+
+interface MediaGridProps {
+  media: MediaItem[];
+  onDelete?: (id: string) => void;
+  onUpdate?: (id: string, data: Partial<MediaItem>) => void;
+  loading?: boolean;
+}
+
+export function MediaGrid({ media, onDelete, onUpdate, loading }: MediaGridProps) {
+  const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const getIcon = (type: MediaItem['type']) => {
+    switch (type) {
+      case 'video':
+        return Video;
+      case 'audio':
+        return Music;
+      default:
+        return ImageIcon;
+    }
+  };
+
+  const getTypeLabel = (type: MediaItem['type']) => {
+    switch (type) {
+      case 'video':
+        return 'Vidéo';
+      case 'audio':
+        return 'Audio';
+      default:
+        return 'Image';
+    }
+  };
+
+  const getTypeColor = (type: MediaItem['type']) => {
+    switch (type) {
+      case 'video':
+        return 'bg-red-500';
+      case 'audio':
+        return 'bg-purple-500';
+      default:
+        return 'bg-blue-500';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {Array.from({ length: 10 }).map((_, i) => (
+          <Skeleton key={i} className="aspect-square rounded-lg" />
+        ))}
+      </div>
+    );
+  }
+
+  if (media.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <div className="rounded-full bg-muted p-4">
+          <ImageIcon className="h-8 w-8 text-muted-foreground" />
+        </div>
+        <h3 className="mt-4 text-lg font-semibold">Aucun média trouvé</h3>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Téléversez votre première image, vidéo ou fichier audio pour commencer.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {media.map((item) => {
+          const Icon = getIcon(item.type);
+          return (
+            <Card
+              key={item.id}
+              className="group relative overflow-hidden transition-all hover:shadow-lg"
+            >
+              <div className="aspect-square relative bg-muted">
+                {item.type === 'image' ? (
+                  <Image
+                    src={item.url}
+                    alt={item.altText || item.title}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center">
+                    <Icon className="h-12 w-12 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100" />
+                <div className="absolute inset-0 flex items-center justify-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    className="h-8 w-8"
+                    onClick={() => {
+                      setSelectedMedia(item);
+                      setPreviewOpen(true);
+                    }}
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    className="h-8 w-8"
+                    onClick={() => window.open(item.url, '_blank')}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                </div>
+                <Badge
+                  className={`absolute left-2 top-2 text-white ${getTypeColor(item.type)}`}
+                >
+                  {getTypeLabel(item.type)}
+                </Badge>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="absolute right-2 top-2 h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => {
+                      setSelectedMedia(item);
+                      setPreviewOpen(true);
+                    }}>
+                      <Eye className="mr-2 h-4 w-4" />
+                      Aperçu
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <Download className="mr-2 h-4 w-4" />
+                      Télécharger
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copier l&apos;URL
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="text-destructive" onClick={() => onDelete?.(item.id)}>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Supprimer
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              <CardContent className="p-3">
+                <p className="truncate text-sm font-medium">{item.title || item.altText || 'Sans titre'}</p>
+                <p className="text-xs text-muted-foreground">
+                  {format(new Date(item.createdAt), 'MMM d, yyyy')}
+                </p>
+                {item.articleCount !== undefined && item.articleCount > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Utilisé dans {item.articleCount} article(s)
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Preview Dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>{selectedMedia?.title || 'Aperçu du média'}</DialogTitle>
+          </DialogHeader>
+          {selectedMedia && (
+            <div className="space-y-4">
+              <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
+                {selectedMedia.type === 'image' ? (
+                  <Image
+                    src={selectedMedia.url}
+                    alt={selectedMedia.altText || selectedMedia.title}
+                    fill
+                    className="object-contain"
+                  />
+                ) : selectedMedia.type === 'video' ? (
+                  <video controls className="h-full w-full">
+                    <source src={selectedMedia.url} />
+                    Votre navigateur ne prend pas en charge la balise vidéo.
+                  </video>
+                ) : (
+                  <audio controls className="w-full p-4">
+                    <source src={selectedMedia.url} />
+                    Votre navigateur ne prend pas en charge la balise audio.
+                  </audio>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="font-medium">Type</p>
+                  <p className="text-muted-foreground">{getTypeLabel(selectedMedia.type)}</p>
+                </div>
+                <div>
+                  <p className="font-medium">Téléversé le</p>
+                  <p className="text-muted-foreground">
+                    {format(new Date(selectedMedia.createdAt), 'PPP p')}
+                  </p>
+                </div>
+                {selectedMedia.altText && (
+                  <div>
+                    <p className="font-medium">Texte alternatif</p>
+                    <p className="text-muted-foreground">{selectedMedia.altText}</p>
+                  </div>
+                )}
+                {selectedMedia.caption && (
+                  <div>
+                    <p className="font-medium">Légende</p>
+                    <p className="text-muted-foreground">{selectedMedia.caption}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

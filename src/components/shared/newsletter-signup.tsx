@@ -1,0 +1,144 @@
+'use client';
+
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { FaEnvelope, FaCheckCircle } from 'react-icons/fa';
+
+interface NewsletterSignupProps {
+  className?: string;
+  title?: string;
+  description?: string;
+  variant?: 'default' | 'compact' | 'sidebar';
+}
+
+export function NewsletterSignup({ 
+  className = '',
+  title = '📬 Newsletter',
+  description = 'Recevez les derniers articles directement dans votre boîte mail.',
+  variant = 'default'
+}: NewsletterSignupProps) {
+  const [email, setEmail] = useState('');
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+
+    setIsLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    
+    setIsSubscribed(true);
+    setIsLoading(false);
+    setEmail('');
+    setTimeout(() => setIsSubscribed(false), 5000);
+  };
+
+  if (variant === 'compact') {
+    return (
+      <div className={`${className}`}>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <Input
+            type="email"
+            placeholder="Votre email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full rounded-full bg-muted/50 border focus:ring-2 focus:ring-primary/20"
+            required
+          />
+          <Button type="submit" className="w-full rounded-full gap-2" disabled={isLoading || isSubscribed}>
+            {isLoading ? 'Abonnement...' : isSubscribed ? '✅ Abonné' : (
+              <>
+                <FaEnvelope className="h-4 w-4" />
+                S&apos;abonner
+              </>
+            )}
+          </Button>
+        </form>
+        {isSubscribed && (
+          <p className="mt-2 text-xs text-green-600 flex items-center gap-1">
+            <FaCheckCircle className="h-3 w-3" />
+            Merci pour votre abonnement !
+          </p>
+        )}
+        <p className="mt-3 text-xs text-muted-foreground">
+          Pas de spam, désabonnez-vous à tout moment.
+        </p>
+      </div>
+    );
+  }
+
+  if (variant === 'sidebar') {
+    return (
+      <div className={`${className}`}>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <Input
+            type="email"
+            placeholder="Votre email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full rounded-full bg-muted/50 border focus:ring-2 focus:ring-primary/20"
+            required
+          />
+          <Button type="submit" className="w-full rounded-full gap-2" disabled={isLoading || isSubscribed}>
+            {isLoading ? 'Abonnement...' : isSubscribed ? '✅ Abonné' : (
+              <>
+                <FaEnvelope className="h-4 w-4" />
+                S&apos;abonner
+              </>
+            )}
+          </Button>
+        </form>
+        {isSubscribed && (
+          <p className="mt-2 text-xs text-green-600 flex items-center gap-1">
+            <FaCheckCircle className="h-3 w-3" />
+            Merci pour votre abonnement !
+          </p>
+        )}
+        <p className="mt-3 text-xs text-muted-foreground">
+          Pas de spam, désabonnez-vous à tout moment.
+        </p>
+      </div>
+    );
+  }
+
+  // Default variant - full width
+  return (
+    <div className={`apple-card p-8 text-center ${className}`}>
+      <div className="mx-auto max-w-2xl">
+        <div className="inline-flex rounded-full bg-primary/10 p-3">
+          <FaEnvelope className="h-6 w-6 text-primary" />
+        </div>
+        <h2 className="mt-4 text-2xl font-bold">{title}</h2>
+        <p className="mt-2 text-muted-foreground">{description}</p>
+        <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <Input
+            type="email"
+            placeholder="Entrez votre email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="flex-1 rounded-full bg-muted/50 border focus:ring-2 focus:ring-primary/20"
+            required
+          />
+          <Button type="submit" className="rounded-full gap-2" disabled={isLoading || isSubscribed}>
+            {isLoading ? 'Abonnement...' : isSubscribed ? '✅ Abonné' : (
+              <>
+                <FaEnvelope className="h-4 w-4" />
+                S&apos;abonner
+              </>
+            )}
+          </Button>
+        </form>
+        {isSubscribed && (
+          <p className="mt-4 text-sm text-green-600 font-medium">
+            Merci pour votre abonnement ! 🎉
+          </p>
+        )}
+        <p className="mt-4 text-xs text-muted-foreground">
+          Pas de spam, désabonnez-vous à tout moment.
+        </p>
+      </div>
+    </div>
+  );
+}

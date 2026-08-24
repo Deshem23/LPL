@@ -1,0 +1,317 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ClientDate } from '@/components/shared/client-date';
+import { useToast } from '@/components/ui/use-toast';
+import { timeAgo } from '@/lib/utils';
+import {
+  FileText,
+  Clock,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Plus,
+  Image,
+  DollarSign,
+  Loader2,
+} from 'lucide-react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+
+interface EditorDashboardData {
+  stats: {
+    totalArticles: number;
+    pendingReview: number;
+    publishedToday: number;
+    totalViews: number;
+    approvalRate: number;
+    totalMedia: number;
+    totalAds: number;
+  };
+  pendingArticles: Array<{ id: string; title: string; author: string; submitted: string; status: string }>;
+  recentActivity: Array<{ id: string; action: string; article: string; time: string; user: string }>;
+}
+
+export default function EditorDashboard() {
+  const [data, setData] = useState<EditorDashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [actioningId, setActioningId] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/editor-dashboard', { cache: 'no-store' });
+      if (res.ok) {
+        setData(await res.json());
+      }
+    } catch (error) {
+      console.error('Error loading editor dashboard:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const handleDecision = async (id: string, status: 'published' | 'draft') => {
+    setActioningId(id);
+    try {
+      const res = await fetch(`/api/articles/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Une erreur est survenue');
+
+      toast({
+        title: status === 'published' ? 'Article approuvé' : 'Article renvoyé au brouillon',
+        description:
+          status === 'published'
+            ? "L'article a été publié."
+            : "L'auteur peut le modifier et le soumettre à nouveau.",
+      });
+      await load();
+    } catch (error: any) {
+      toast({ title: 'Erreur', description: error.message, variant: 'destructive' });
+    } finally {
+      setActioningId(null);
+    }
+  };
+
+  if (loading || !data) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-16 w-full" />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-28" />
+          ))}
+        </div>
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  const { stats, pendingArticles, recentActivity } = data;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Tableau de bord éditeur</h2>
+          <p className="text-muted-foreground">
+            Relisez le contenu, gérez les médias et suivez les performances.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Badge variant="outline" className="gap-1">
+            <CheckCircle className="h-3 w-3 text-blue-500" />
+            Éditeur
+          </Badge>
+          <span className="text-sm text-muted-foreground">
+            Dernière mise à jour : <ClientDate />
+          </span>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <StatCard title="Total des articles" value={stats.totalArticles} icon={FileText} />
+        <StatCard title="En attente de relecture" value={stats.pendingReview} icon={Clock} highlight="warning" />
+        <StatCard title="Fichiers médias" value={stats.totalMedia} icon={Image} highlight="success" />
+        <StatCard title="Publicités actives" value={stats.totalAds} icon={DollarSign} />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <QuickActionButton href="/lpl-access-2026/panel/articles/new" icon={Plus} label="Créer un article" description="Rédiger du nouveau contenu" color="primary" />
+        <QuickActionButton href="/lpl-access-2026/panel/media" icon={Image} label="Téléverser des médias" description="Ajouter des images et vidéos" color="blue" />
+        <QuickActionButton href="/lpl-access-2026/panel/ads" icon={DollarSign} label="Gérer les publicités" description="Créer et modifier des publicités" color="purple" />
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-yellow-500" />
+            En attente de relecture
+          </CardTitle>
+          <Link href="/lpl-access-2026/panel/articles?status=review">
+            <Button variant="outline" size="sm">Voir tout</Button>
+          </Link>
+        </CardHeader>
+        <CardContent>
+          {pendingArticles.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Rien n&apos;est en attente de relecture pour le moment.
+            </p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Article</TableHead>
+                  <TableHead>Auteur</TableHead>
+                  <TableHead>Soumis</TableHead>
+                  <TableHead>Statut</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pendingArticles.map((article) => (
+                  <TableRow key={article.id}>
+                    <TableCell className="font-medium">{article.title}</TableCell>
+                    <TableCell>{article.author}</TableCell>
+                    <TableCell>{timeAgo(article.submitted)}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                        <AlertCircle className="h-3 w-3 mr-1" />
+                        En révision
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 gap-1"
+                          disabled={actioningId === article.id}
+                          onClick={() => handleDecision(article.id, 'published')}
+                        >
+                          {actioningId === article.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <CheckCircle className="h-3 w-3" />
+                          )}
+                          Approuver
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 gap-1 text-destructive"
+                          disabled={actioningId === article.id}
+                          onClick={() => handleDecision(article.id, 'draft')}
+                        >
+                          <XCircle className="h-3 w-3" />
+                          Rejeter
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Activité récente</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {recentActivity.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucune activité pour le moment.</p>
+            ) : (
+              <div className="space-y-4">
+                {recentActivity.map((activity) => (
+                  <div key={activity.id} className="flex items-start gap-4">
+                    <div className="rounded-full bg-primary/10 p-2">
+                      {activity.action === 'Publié' && <CheckCircle className="h-4 w-4 text-green-500" />}
+                      {activity.action === 'Soumis pour révision' && <Clock className="h-4 w-4 text-yellow-500" />}
+                      {activity.action === 'Programmé' && <Clock className="h-4 w-4 text-blue-500" />}
+                      {(activity.action === 'Brouillon enregistré' || activity.action === 'Archivé') && (
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{activity.action}</p>
+                      <p className="text-sm text-muted-foreground">{activity.article}</p>
+                      <p className="text-xs text-muted-foreground">{timeAgo(activity.time)} par {activity.user}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Aperçu des statistiques</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b pb-2">
+                <span className="text-sm text-muted-foreground">Vues totales</span>
+                <span className="font-medium">{stats.totalViews.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center justify-between border-b pb-2">
+                <span className="text-sm text-muted-foreground">Total des articles</span>
+                <span className="font-medium">{stats.totalArticles}</span>
+              </div>
+              <div className="flex items-center justify-between border-b pb-2">
+                <span className="text-sm text-muted-foreground">Taux d&apos;approbation</span>
+                <span className="font-medium text-green-600">{stats.approvalRate}%</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Publiés aujourd&apos;hui</span>
+                <span className="font-medium text-blue-600">{stats.publishedToday}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ title, value, icon: Icon, highlight }: { title: string; value: number; icon: any; highlight?: 'warning' | 'success' }) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        <div className={`rounded-full p-2 ${
+          highlight === 'warning' ? 'bg-yellow-50 text-yellow-600' :
+          highlight === 'success' ? 'bg-green-50 text-green-600' :
+          'bg-primary/10 text-primary'
+        }`}>
+          <Icon className="h-4 w-4" />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold">{value.toLocaleString()}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const QUICK_ACTION_COLORS: Record<string, string> = {
+  primary: 'hover:bg-primary/10 hover:border-primary/20 hover:text-primary',
+  blue: 'hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600',
+  purple: 'hover:bg-purple-50 hover:border-purple-200 hover:text-purple-600',
+  green: 'hover:bg-green-50 hover:border-green-200 hover:text-green-600',
+};
+
+function QuickActionButton({ href, icon: Icon, label, description, color }: { href: string; icon: any; label: string; description: string; color: string }) {
+  return (
+    <a href={href} className="block">
+      <div className={`rounded-lg border p-4 text-center transition-all hover:shadow-md ${QUICK_ACTION_COLORS[color] || ''}`}>
+        <Icon className="mx-auto h-6 w-6" />
+        <p className="mt-1 text-sm font-medium">{label}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+    </a>
+  );
+}

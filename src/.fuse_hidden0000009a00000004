@@ -1,0 +1,342 @@
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { createClient } from './lib/supabase/server';
+import { locales, defaultLocale } from './lib/i18n/config';
+
+// ============================================
+// 1. LOCALE HANDLING FUNCTIONS
+// ============================================
+
+/**
+ * Get the preferred locale from the request
+ */
+function getLocale(request: NextRequest): string {
+  // Check if there's a locale in the path
+  const pathname = request.nextUrl.pathname;
+  const pathnameHasLocale = locales.some(
+    (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
+  );
+
+  if (pathnameHasLocale) {
+    // Extract the locale from the path
+    const locale = locales.find(
+      (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
+    );
+    return locale || defaultLocale;
+  }
+
+  // If no locale in path, check browser language preference
+  const acceptLanguage = request.headers.get('accept-language');
+  if (acceptLanguage) {
+    const preferredLocale = locales.find(locale =>
+      acceptLanguage.toLowerCase().includes(locale.toLowerCase())
+    );
+    if (preferredLocale) {
+      return preferredLocale;
+    }
+  }
+
+  return defaultLocale;
+}
+
+// ============================================
+// 2. AUTH PROTECTION FUNCTIONS
+// ============================================
+
+/**
+ * Check if path is public (no auth required)
+ */
+function isPublicPath(pathname: string): boolean {
+  const publicPaths = [
+    '/login',
+    '/register',
+    '/forgot-password',
+    '/reset-password',
+    '/auth/callback',
+    '/',
+  ];
+
+  // Check exact matches
+  if (publicPaths.includes(pathname)) {
+    return true;
+  }
+
+  // Check if path starts with any public path (for nested routes)
+  return publicPaths.some(path => pathname.startsWith(path + '/'));
+}
+
+/**
+ * The first-login "change your generic password / complete your author
+ * profile" page. Requires auth like an admin path, but isn't under
+ * /admin and has no role restriction - anyone who's logged in lands here
+ * exactly once (until they submit it), regardless of role.
+ */
+function isCompleteProfilePath(pathname: string): boolean {
+  return pathname === '/complete-profile';
+}
+
+/**
+ * Check if path is an admin route
+ */
+function isAdminPath(pathname: string): boolean {
+  return pathname.startsWith('/admin');
+}
+
+/**
+ * Check if path is the unauthorized page (also lives outside [locale] on
+ * disk, at src/app/unauthorized/page.tsx).
+ */
+function isUnauthorizedPath(pathname: string): boolean {
+  return pathname === '/unauthorized' || pathname.startsWith('/unauthorized/');
+}
+
+/**
+ * Every route that lives outside src/app/[locale] on disk and must
+ * therefore never get a /<locale> prefix added - regardless of whether
+ * it requires auth. isPublicPath() only covers "no auth required" paths;
+ * /complete-profile and /unauthorized both need auth (checked further
+ * down) but still have to be exempted here too, or STEP 3 below redirects
+ * them to e.g. /fr/complete-profile, which doesn't exist - a real bug
+ * this middleware had until this check was split out.
+ */
+function isLocaleExemptPath(pathname: string): boolean {
+  return (
+    isPublicPath(pathname) ||
+    isAdminPath(pathname) ||
+    isCompleteProfilePath(pathname) ||
+    isUnauthorizedPath(pathname)
+  );
+}
+
+/**
+ * Check if path is an API route
+ */
+function isApiPath(pathname: string): boolean {
+  return pathname.startsWith('/api');
+}
+
+/**
+ * Check if path is a static asset
+ */
+function isStaticPath(pathname: string): boolean {
+  const staticPatterns = [
+    '/_next',
+    '/favicon.ico',
+    '/manifest.json',
+    '/icons',
+    '/images',
+    '/fonts',
+    '/logo'
+  ];
+  return staticPatterns.some(pattern => pathname.startsWith(pattern));
+}
+
+/**
+ * Get allowed roles for a specific admin route
+ */
+function getAllowedRolesForPath(pathname: string): string[] | null {
+  const roleMap: Record<string, string[]> = {
+    '/admin/settings': ['admin'],
+    '/admin/users': ['admin'],
+    '/admin/categories': ['admin'],
+    '/admin/audit-log': ['admin'],
+    '/admin/reports': ['admin'],
+    '/admin/ads': ['admin', 'editor'],
+    '/admin/analytics': ['admin', 'editor', 'writer'],
+    '/admin/editor': ['admin', 'editor'],
+    '/admin/writer': ['admin', 'editor', 'writer'],
+    '/admin/contributor': ['admin', 'editor', 'writer', 'contributor'],
+    '/admin/media': ['admin', 'editor', 'writer'],
+  };
+
+  // Check exact match
+  if (roleMap[pathname]) {
+    return roleMap[pathname];
+  }
+
+  // Check prefix matches
+  for (const [route, roles] of Object.entries(roleMap)) {
+    if (pathname.startsWith(route)) {
+      return roles;
+    }
+  }
+
+  // Default: all authenticated users can access /admin
+  if (pathname === '/admin') {
+    return ['admin', 'editor', 'writer', 'contributor'];
+  }
+
+  return null;
+}
+
+// ============================================
+// 3. MAIN MIDDLEWARE
+// ============================================
+
+export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  
+  // ============================================
+  // STEP 1: Skip middleware for static assets
+  // ============================================
+  if (isStaticPath(pathname)) {
+    return NextResponse.next();
+  }
+
+  // ============================================
+  // STEP 2: Handle API routes
+  // ============================================
+  if (isApiPath(pathname)) {
+    return NextResponse.next();
+  }
+
+  // ============================================
+  // STEP 3: Handle Locale Redirect
+  // ============================================
+  // Check if the pathname already has a locale
+  const pathnameHasLocale = locales.some(
+    (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
+  );
+
+  // If it's the root path, redirect to default locale
+  if (pathname === '/') {
+    const url = new URL(`/${defaultLocale}`, request.url);
+    return NextResponse.redirect(url);
+  }
+
+  // If path doesn't have locale and isn't one of the routes that live
+  // outside [locale] on disk, add locale.
+  if (!pathnameHasLocale && !isLocaleExemptPath(pathname)) {
+    const locale = getLocale(request);
+    const newUrl = new URL(`/${locale}${pathname}`, request.url);
+    return NextResponse.redirect(newUrl);
+  }
+
+  // ============================================
+  // STEP 4: Handle Authentication
+  // ============================================
+  
+  // Get the Supabase client
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // ============================================
+  // STEP 4A: Public paths (no auth required)
+  // ============================================
+  if (isPublicPath(pathname)) {
+    // If user is already authenticated and tries to access login/register,
+    // redirect to admin dashboard (or the first-login gate, if they still
+    // haven't changed their generic password).
+    if (user && (pathname === '/login' || pathname === '/register')) {
+      const { data: profile } = await supabase
+        .from('users')
+        .select('must_change_password')
+        .eq('id', user.id)
+        .single();
+
+      if (profile?.must_change_password) {
+        return NextResponse.redirect(new URL('/complete-profile', request.url));
+      }
+
+      const role = user.user_metadata?.role || 'contributor';
+      const redirectPath = getDashboardPath(role);
+      return NextResponse.redirect(new URL(redirectPath, request.url));
+    }
+    return NextResponse.next();
+  }
+
+  // ============================================
+  // STEP 4B: The first-login "complete your profile" page
+  // ============================================
+  // Needs auth like an admin path, but no role check - every role lands
+  // here on their forced first login.
+  if (isCompleteProfilePath(pathname)) {
+    if (!user) {
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('redirect', pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+    return NextResponse.next();
+  }
+
+  // ============================================
+  // STEP 4C: Admin paths (require authentication)
+  // ============================================
+  if (isAdminPath(pathname)) {
+    // If no user, redirect to login
+    if (!user) {
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('redirect', pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    // An admin-created account with a still-unchanged generic password
+    // gets routed to /complete-profile before it can reach any dashboard
+    // - checked against the users table (not the JWT), since this flag
+    // is meant to flip the moment they submit that page, not wait for a
+    // fresh login/token refresh.
+    const { data: profile } = await supabase
+      .from('users')
+      .select('must_change_password')
+      .eq('id', user.id)
+      .single();
+
+    if (profile?.must_change_password) {
+      return NextResponse.redirect(new URL('/complete-profile', request.url));
+    }
+
+    // Check role-based access
+    const userRole = user.user_metadata?.role || 'contributor';
+    const allowedRoles = getAllowedRolesForPath(pathname);
+
+    if (allowedRoles && !allowedRoles.includes(userRole)) {
+      return NextResponse.redirect(new URL('/unauthorized', request.url));
+    }
+
+    // User is authenticated and authorized
+    return NextResponse.next();
+  }
+
+  // ============================================
+  // STEP 5: All other paths (public with locale)
+  // ============================================
+  const response = NextResponse.next();
+  
+  // Set locale header for use in components
+  const locale = pathnameHasLocale 
+    ? locales.find(l => pathname.startsWith(`/${l}`)) || defaultLocale
+    : defaultLocale;
+  response.headers.set('x-locale', locale);
+  
+  return response;
+}
+
+// ============================================
+// 4. HELPER FUNCTIONS
+// ============================================
+
+function getDashboardPath(role: string): string {
+  switch (role) {
+    case 'admin':
+      return '/admin';
+    case 'editor':
+      return '/admin/editor';
+    case 'writer':
+      return '/admin/writer';
+    case 'contributor':
+      return '/admin/contributor';
+    default:
+      return '/admin';
+  }
+}
+
+// ============================================
+// 5. CONFIGURATION
+// ============================================
+
+export const config = {
+  matcher: [
+    // Skip all internal paths (_next, api, etc)
+    '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|icons|.*\\..*).*)',
+  ],
+};

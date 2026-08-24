@@ -1,0 +1,147 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { getCurrentUser } from '@/lib/auth/actions';
+import { randomUUID } from 'crypto';
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+// Always fetch fresh from the DB - a GET route handler with no
+// request-derived dynamic behavior is otherwise eligible for Next's
+// static Route Handler caching, which is what caused this endpoint to
+// serve a stale snapshot until a full rebuild/refresh.
+export const dynamic = 'force-dynamic';
+
+
+export async function POST(request: NextRequest) {
+  try {
+    // Was completely unauthenticated - anyone who found this URL could
+    // upload arbitrary files into the site's storage bucket and media
+    // table. Now requires a logged-in session; used both by the admin
+    // media library (any of the 4 roles that can reach /admin/media) and
+    // by the self-service "avatar" upload on /admin/profile and the
+    // admin's "edit user" dialog.
+    const authUser = await getCurrentUser();
+    if (!authUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const formData = await request.formData();
+    const files = formData.getAll('files') as File[];
+    const type = formData.get('type') as string || 'image';
+    const altText = formData.get('altText') as string || '';
+    const caption = formData.get('caption') as string || '';
+
+    if (!files || files.length === 0) {
+      return NextResponse.json(
+        { error: 'No files provided' },
+        { status: 400 }
+      );
+    }
+
+    for (const file of files) {
+      if (file.size > MAX_FILE_SIZE) {
+        return NextResponse.json(
+          { error: `"${file.name}" dépasse la taille maximale de 5 Mo.` },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Avatar uploads specifically are always images - an authenticated
+    // but non-admin user (any role can upload their own avatar) should
+    // not be able to use this path to drop a video/pdf/whatever into
+    // storage under the guise of a profile picture.
+    if (type === 'avatar' && files.some((f) => !f.type.startsWith('image/'))) {
+      return NextResponse.json(
+        { error: 'La photo de profil doit être une image.' },
+        { status: 400 }
+      );
+    }
+
+    // Service-role client - storage uploads and the media table INSERT
+    // policy both key off auth.jwt() ->> 'role', which the regular
+    // client's session JWT may not actually carry as a top-level claim
+    // (same gap already worked around for ads/articles/categories - see
+    // src/lib/supabase/admin.ts).
+    const supabase = createAdminClient();
+    const uploadedMedia = [];
+    // Was previously just console.error()'d and skipped per-file, so a
+    // failure on every file still returned {success:true, media:[]} with
+    // an HTTP 200 - the browser had no way to tell "nothing uploaded"
+    // from "it worked but there was nothing to upload", and the real
+    // reason (e.g. the storage bucket not existing, or a DB constraint
+    // rejecting the row) only ever showed up in the server log, never to
+    // whoever was actually trying to upload.
+    const failures: string[] = [];
+
+    for (const file of files) {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${randomUUID()}.${fileExt}`;
+      const filePath = `media/${type}/${fileName}`;
+
+      // Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('media')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        failures.push(`${file.name}: ${uploadError.message}`);
+        continue;
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('media')
+        .getPublicUrl(filePath);
+
+      // Save to database
+      const { data: media, error: dbError } = await supabase
+        .from('media')
+        .insert({
+          url: publicUrl,
+          type,
+          alt_text: altText,
+          caption,
+          file_name: file.name,
+          file_size: file.size,
+          mime_type: file.type,
+        })
+        .select()
+        .single();
+
+      if (dbError) {
+        console.error('Database error:', dbError);
+        failures.push(`${file.name}: ${dbError.message}`);
+        continue;
+      }
+
+      uploadedMedia.push(media);
+    }
+
+    // Nothing made it through - report the real reason instead of a
+    // fake 200/success with an empty array.
+    if (uploadedMedia.length === 0 && failures.length > 0) {
+      return NextResponse.json(
+        { error: failures.join(' | '), success: false },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      media: uploadedMedia,
+      count: uploadedMedia.length,
+      // Present when some files uploaded and others didn't, so a
+      // multi-file caller (the admin media library) can still tell the
+      // partial failure apart from a clean success.
+      ...(failures.length > 0 ? { failures } : {}),
+    });
+  } catch (error) {
+    console.error('Upload error:', error);
+    return NextResponse.json(
+      { error: 'Upload failed' },
+      { status: 500 }
+    );
+  }
+}

@@ -1,0 +1,20 @@
+import { NextResponse } from 'next/server';
+import { getAnalyticsData } from '@/lib/services/analytics-service';
+
+// Reads request.url below so Next already treats this as dynamic in
+// practice, but making it explicit keeps every admin stats/analytics
+// route consistent - see api/admin/stats/route.ts for the route that
+// actually needed this to fix stale numbers.
+export const dynamic = 'force-dynamic';
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const granularity = searchParams.get('range') === 'monthly' ? 'monthly' : 'weekly';
+    const data = await getAnalyticsData(granularity);
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error('Error fetching analytics:', error);
+    return NextResponse.json({ error: 'Failed to fetch analytics' }, { status: 500 });
+  }
+}

@@ -1,0 +1,40 @@
+import { createClient } from '@/lib/supabase/server';
+import { NextResponse } from 'next/server';
+
+export async function GET() {
+  console.log('🔍 Testing Supabase connection...');
+  
+  try {
+    const supabase = createClient();
+    console.log('✅ Supabase client created');
+    
+    // Try to query categories
+    const { data, error } = await supabase
+      .from('categories')
+      .select('count')
+      .limit(1);
+    
+    if (error) {
+      console.error('❌ Supabase query error:', error.message);
+      return NextResponse.json({
+        status: 'error',
+        message: 'Supabase query failed',
+        error: error.message
+      }, { status: 500 });
+    }
+    
+    console.log('✅ Supabase query successful');
+    return NextResponse.json({
+      status: 'success',
+      message: 'Supabase connection working!',
+      data: data
+    });
+  } catch (error: any) {
+    console.error('❌ Supabase test error:', error.message);
+    return NextResponse.json({
+      status: 'error',
+      message: 'Failed to connect to Supabase',
+      error: error.message
+    }, { status: 500 });
+  }
+}

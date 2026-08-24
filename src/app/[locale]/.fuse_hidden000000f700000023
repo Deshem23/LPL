@@ -1,0 +1,133 @@
+import { Suspense } from 'react';
+import { getTranslations } from 'next-intl/server';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Sidebar } from '@/components/shared/sidebar';
+import { HeroSection } from '@/components/home/hero-section';
+import { CategoryGrid } from '@/components/home/category-grid';
+import { PinnedArticles } from '@/components/home/pinned-articles';
+import { SimpleArticleList } from '@/components/home/simple-article-list';
+import { getArticles, type Article } from '@/lib/api/articles';
+import { locales } from '@/lib/i18n/config';
+
+// See the matching comment in categories/[slug]/page.tsx - without this,
+// Next's default fetch caching can serve a stale homepage (old articles,
+// old pinned/breaking state) instead of hitting the database fresh.
+export const dynamic = 'force-dynamic';
+
+export async function generateMetadata({
+  params: { locale },
+}: {
+  params: { locale: string };
+}) {
+  const validLocale = locales.includes(locale as any) ? locale : 'fr';
+  const t = await getTranslations({ locale: validLocale, namespace: 'HomePage' });
+  
+  return {
+    title: t('title'),
+    description: t('description'),
+  };
+}
+
+export default async function HomePage({
+  params: { locale },
+}: {
+  params: { locale: string };
+}) {
+  const validLocale = locales.includes(locale as any) ? locale : 'fr';
+  const t = await getTranslations({ locale: validLocale, namespace: 'HomePage' });
+
+  let articles: Article[] = [];
+  try {
+    const result = await getArticles({ locale: validLocale, limit: 20 });
+    articles = result.articles || [];
+  } catch (error) {
+    console.error('Error fetching articles:', error);
+  }
+  
+  // PinnedArticles applies its own isPinned/isFeatured selection (with a
+  // most-viewed fallback), so it gets the full list rather than a
+  // pre-sorted subset.
+  const recommendedArticles = [...articles]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 6);
+
+  return (
+    <div className="container mx-auto px-4 page-container">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+        <div className="lg:col-span-8 space-y-8">
+          <section>
+            <Suspense fallback={<Skeleton className="h-[520px] w-full rounded-3xl" />}>
+              <HeroSection locale={validLocale} articles={articles.slice(0, 4)} />
+            </Suspense>
+          </section>
+
+          <div className="creative-divider" />
+
+          <section>
+            <div className="creative-section-header">
+              <h2>📌 À la une</h2>
+            </div>
+            <div className="card-spacing">
+              <PinnedArticles locale={validLocale} articles={articles} />
+            </div>
+          </section>
+
+          <div className="creative-divider" />
+
+          <section>
+            <div className="creative-section-header">
+              <h2>💡 Suggestions</h2>
+            </div>
+            <div className="card-spacing">
+              <SimpleArticleList locale={validLocale} articles={recommendedArticles} limit={6} />
+            </div>
+          </section>
+
+          <div className="creative-divider" />
+
+          <section className="w-full">
+            <div className="creative-section-header">
+              <h2>{t('categories')}</h2>
+            </div>
+            <div className="card-spacing">
+              <Suspense fallback={<CategoriesSkeleton />}>
+                <CategoryGrid locale={validLocale} />
+              </Suspense>
+            </div>
+          </section>
+        </div>
+
+        <div className="lg:col-span-4">
+          {/* showCategories is off here (unlike the category/subcategory
+              sidebars) because the homepage already has its own
+              "Catégories" grid section in the main content below - a
+              second categories list in the sidebar would just be a
+              duplicate of that. */}
+          <Sidebar
+            locale={validLocale}
+            articles={articles}
+            variant="default"
+            showCategories={false}
+            showNewsletter={true}
+            showSearch={true}
+            showLatestNews={true}
+            showPinned={false}
+            showAds={true}
+            showSocialShare={true}
+            showTrending={true}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CategoriesSkeleton() {
+  return (
+    <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 lg:grid-cols-8">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <Skeleton key={i} className="h-20 rounded-xl" />
+      ))}
+    </div>
+  );
+}

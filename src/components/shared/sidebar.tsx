@@ -1,0 +1,365 @@
+'use client';
+
+import { useState } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
+import { useRouter } from 'next/navigation';
+import { Search, X, Calendar } from 'lucide-react';
+import { 
+  FaSearch,
+  FaClock,
+  FaTags,
+  FaEnvelope,
+  FaShareAlt,
+  FaChevronRight,
+  FaChartLine,
+  FaHandsHelping,
+  FaLandmark,
+  FaHeartbeat,
+  FaGlobe,
+  FaMicrochip,
+  FaFutbol,
+  FaMagic,
+  FaFire,
+  FaTheaterMasks
+} from 'react-icons/fa';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { AdComponent } from '@/components/shared/ad-component';
+import { NewsletterSignup } from '@/components/shared/newsletter-signup';
+import { TrendingArticles } from '@/components/shared/trending-articles';
+import { WeatherWidget } from '@/components/shared/weather-widget';
+import { SOCIAL_LINKS } from '@/lib/config/social-links';
+import { useCategories } from '@/components/providers/categories-provider';
+import type { Article } from '@/lib/api/articles';
+
+interface SidebarProps {
+  locale: string;
+  articles: Article[];
+  currentCategory?: string;
+  showSearch?: boolean;
+  showCategories?: boolean;
+  showNewsletter?: boolean;
+  showLatestNews?: boolean;
+  showPinned?: boolean;
+  showAds?: boolean;
+  showSocialShare?: boolean;
+  showTrending?: boolean;
+  showWeather?: boolean;
+  showViewAll?: boolean;
+  variant?: 'default' | 'home';
+}
+
+// Map category slugs to React Icons
+const categoryIcons: Record<string, React.ReactNode> = {
+  economie: <FaChartLine className="h-4 w-4" />,
+  societe: <FaHandsHelping className="h-4 w-4" />,
+  politique: <FaLandmark className="h-4 w-4" />,
+  sante: <FaHeartbeat className="h-4 w-4" />,
+  international: <FaGlobe className="h-4 w-4" />,
+  technologie: <FaMicrochip className="h-4 w-4" />,
+  sport: <FaFutbol className="h-4 w-4" />,
+  insolite: <FaMagic className="h-4 w-4" />,
+  culture: <FaTheaterMasks className="h-4 w-4" />,
+};
+
+export function Sidebar({ 
+  locale, 
+  articles,
+  currentCategory, 
+  showSearch = true, 
+  showCategories = true,
+  showNewsletter = true,
+  showLatestNews = true,
+  showPinned = true,
+  showAds = true,
+  showSocialShare = true,
+  showTrending = true,
+  showWeather = true,
+  showViewAll = true,
+  variant = 'default'
+}: SidebarProps) {
+  const router = useRouter();
+  const [sidebarSearch, setSidebarSearch] = useState('');
+
+  // Same active, admin-managed categories the navbar and homepage grid
+  // use (see header.tsx) - read from the CategoriesProvider context the
+  // [locale] layout already populated server-side for this same request,
+  // instead of this component fetching /api/categories itself on mount
+  // (see categories-provider.tsx for why that used to be wasteful).
+  const categories = useCategories();
+
+  const handleSidebarSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (sidebarSearch.trim()) {
+      router.push(`/${locale}/search?q=${encodeURIComponent(sidebarSearch.trim())}`);
+    }
+  };
+
+  // Latest 5 articles across the entire platform, derived from the
+  // `articles` prop the parent Server Component already fetched. This
+  // used to call getArticles() directly in a useEffect, but that hits
+  // the real, service-role-backed database - safe only server-side (see
+  // src/lib/supabase/admin.ts) - so it would break here in the browser.
+  const latestArticles = showLatestNews
+    ? [...articles]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 5)
+    : [];
+
+  // Used to show every main category, not just the "other" ones - a
+  // subcategory page passes its PARENT's slug as currentCategory (see
+  // the comment on `basePath` in category-client.tsx), so filtering the
+  // current one out here used to hide that category entirely instead of
+  // just highlighting it (e.g. browsing any Culture subcategory made
+  // "Culture" itself vanish from this widget).
+  const otherCategories = categories;
+  const showCategoriesFinal = variant === 'home' ? false : showCategories;
+  const showNewsletterFinal = variant === 'home' ? false : showNewsletter;
+  const showPinnedFinal = variant === 'home' ? false : showPinned;
+
+  return (
+    <div className="space-y-6">
+      {/* Weather Widget - Port-au-Prince */}
+      {showWeather && (
+        <WeatherWidget city="Port-au-Prince" locale={locale} />
+      )}
+
+      {/* Creative Divider */}
+      <div className="creative-divider" />
+
+      {/* Latest News - Platform-wide - No "Voir tout" link */}
+      {showLatestNews && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-lg flex items-center gap-2">
+              <FaClock className="h-4 w-4 text-primary" />
+              Dernières actualités
+            </h3>
+          </div>
+          <div className="h-px w-full bg-gradient-to-r from-primary/30 to-transparent mb-3" />
+          <div className="space-y-2">
+            {latestArticles.length > 0 ? (
+              latestArticles.map((article) => (
+                <Link
+                  key={article.id}
+                  href={`/${locale}/articles/${article.slug}`}
+                  className="block group"
+                >
+                  <div className="flex items-start gap-3 px-2 py-2 rounded-lg hover:bg-muted/50 transition-all">
+                    <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg bg-muted/50">
+                      {article.coverImage ? (
+                        <Image
+                          src={article.coverImage}
+                          alt={article.title}
+                          fill
+                          className="object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="h-full w-full bg-gradient-to-br from-primary/10 to-primary/5" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium group-hover:text-primary transition-colors line-clamp-2">
+                        {article.title}
+                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] text-muted-foreground">
+                          {new Date(article.createdAt).toLocaleDateString(locale || 'fr', {
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </span>
+                        {article.category && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+                            {article.category.name}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Aucun article récent
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Creative Divider */}
+      <div className="creative-divider" />
+
+      {/* Trending - Most Read Articles */}
+      {showTrending && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <FaFire className="h-4 w-4 text-orange-500" />
+            <h3 className="font-semibold text-lg">Tendances</h3>
+            <span className="text-xs text-muted-foreground">🔥 Les plus lus</span>
+          </div>
+          <div className="h-px w-full bg-gradient-to-r from-orange-400/30 to-transparent mb-3" />
+          <TrendingArticles locale={locale} articles={articles} limit={4} />
+        </div>
+      )}
+
+      {/* Creative Divider */}
+      <div className="creative-divider" />
+
+      {/* Search - WITH Card */}
+      {showSearch && (
+        <div className="apple-card p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <FaSearch className="h-4 w-4 text-primary" />
+            <h3 className="font-semibold text-lg">Rechercher</h3>
+          </div>
+          <div className="h-px w-full bg-gradient-to-r from-primary/30 to-transparent mb-3" />
+          <form className="space-y-3" onSubmit={handleSidebarSearch}>
+            <div className="relative">
+              <FaSearch className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Rechercher des articles..."
+                value={sidebarSearch}
+                onChange={(e) => setSidebarSearch(e.target.value)}
+                className="pl-10 rounded-full bg-muted/50 border focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <Button type="submit" className="w-full rounded-full">
+              Rechercher
+            </Button>
+          </form>
+        </div>
+      )}
+
+      {/* Sidebar Ad - matches the "Sidebar" placement option in the admin
+          ad form. This used to request the "top" placement, which
+          nothing in the admin form actually lets you assign an ad to -
+          any ad created with "Sidebar" placement was invisible. */}
+      {showAds && <AdComponent type="sidebar" />}
+
+      {/* Newsletter - WITH Card */}
+      {showNewsletterFinal && (
+        <div className="apple-card p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <FaEnvelope className="h-4 w-4 text-primary" />
+            <h3 className="font-semibold text-lg">Newsletter</h3>
+          </div>
+          <div className="h-px w-full bg-gradient-to-r from-primary/30 to-transparent mb-3" />
+          <NewsletterSignup variant="sidebar" />
+        </div>
+      )}
+
+      {/* Categories - WITH Card */}
+      {showCategoriesFinal && (
+        <div className="apple-card p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <FaTags className="h-4 w-4 text-primary" />
+            <h3 className="font-semibold text-lg">Catégories</h3>
+          </div>
+          <div className="h-px w-full bg-gradient-to-r from-primary/30 to-transparent mb-3" />
+          <div className="space-y-1.5">
+            {otherCategories.slice(0, 12).map((cat) => {
+              const isActive = cat.slug === currentCategory;
+              const icon = categoryIcons[cat.slug] || <FaMagic className="h-4 w-4" />;
+
+              return (
+                // Plain <a>, not next/link's <Link> - see the matching
+                // comment in category-card.tsx / layout/header.tsx for why.
+                <a
+                  key={cat.slug}
+                  href={`/${locale}/categories/${cat.slug}`}
+                  className={`group flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                    isActive 
+                      ? 'bg-primary/10 text-primary' 
+                      : 'hover:bg-muted/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`transition-transform duration-200 group-hover:scale-110 ${
+                      isActive ? 'text-primary' : 'text-muted-foreground'
+                    }`}>
+                      {icon}
+                    </span>
+                    <span className={`text-sm font-medium transition-colors ${
+                      isActive 
+                        ? 'text-primary' 
+                        : 'text-muted-foreground group-hover:text-foreground'
+                    }`}>
+                      {cat.label}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {cat.subcategories && cat.subcategories.length > 0 && (
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full transition-colors ${
+                        isActive 
+                          ? 'bg-primary/20 text-primary' 
+                          : 'bg-muted/50 text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary'
+                      }`}>
+                        {cat.subcategories.length}
+                      </span>
+                    )}
+                    <FaChevronRight className={`h-3 w-3 transition-all duration-200 ${
+                      isActive 
+                        ? 'text-primary opacity-100' 
+                        : 'text-muted-foreground/30 opacity-0 group-hover:opacity-100 group-hover:text-primary'
+                    }`} />
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+
+          {/* View All Categories Link - plain <a>, same reasoning as above. */}
+          <div className="mt-3 pt-3 border-t border-muted/30">
+            <a
+              href={`/${locale}/categories`}
+              className="flex items-center justify-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
+            >
+              Voir toutes les catégories
+              <FaChevronRight className="h-3 w-3" />
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Suivez-nous - shared social links (see lib/config/social-links.ts,
+          also used by the footer) - external links, so plain <a> with
+          target="_blank". This card and the sidebar's old "Partager"
+          (share-this-page) card used to both render here under the same
+          showSocialShare prop, which was redundant - "Partager" was
+          removed, this "follow us" card is the one that survives. */}
+      {showSocialShare && (
+        <div className="apple-card p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <FaShareAlt className="h-4 w-4 text-primary" />
+            <h3 className="font-semibold text-lg">Suivez-nous</h3>
+          </div>
+          <div className="h-px w-full bg-gradient-to-r from-primary/30 to-transparent mb-3" />
+          <div className="flex flex-wrap gap-2">
+            {SOCIAL_LINKS.map((social) => (
+              <a
+                key={social.name}
+                href={social.href}
+                target={social.isPlaceholder ? undefined : '_blank'}
+                rel={social.isPlaceholder ? undefined : 'noopener noreferrer'}
+                onClick={social.isPlaceholder ? (e) => e.preventDefault() : undefined}
+                className={`inline-flex h-10 w-10 items-center justify-center rounded-full bg-muted/50 text-muted-foreground transition-all ${
+                  social.isPlaceholder
+                    ? 'cursor-default opacity-50'
+                    : 'hover:scale-110 hover:bg-primary hover:text-white'
+                }`}
+                aria-label={social.name}
+                title={social.isPlaceholder ? 'Bientôt disponible' : social.name}
+              >
+                <social.icon className="h-5 w-5" />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

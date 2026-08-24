@@ -1,0 +1,327 @@
+import { cache } from 'react';
+import { createAdminClient } from '@/lib/supabase/admin';
+
+export interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  parent_id?: string;
+  order_index: number;
+  is_active: boolean;
+  subcategories?: Category[];
+  article_count?: number;
+  created_at: string;
+}
+
+export interface CategoryWithSubs extends Category {
+  subcategories: Category[];
+}
+
+export async function getCategories(locale: string = 'fr'): Promise<Category[]> {
+  const supabase = createAdminClient();
+  
+  const { data, error } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('is_active', true)
+    .order('order_index', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching categories:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+// Wrapped in React's cache() - on a category/subcategory page view, the
+// [locale] layout calls this once (for the header nav) and the page
+// itself calls it again with the exact same arguments to resolve the
+// category being viewed (see resolveCategory() below and in
+// [subslug]/page.tsx). cache() dedupes calls that share the same argument
+// values to a single underlying query per request, so that second call
+// reuses the layout's already-fetched result instead of re-querying.
+export const getCategoriesWithSubcategories = cache(async (
+  includeInactive: boolean = false,
+  // The header nav dropdown (every single page on the site) calls this
+  // through /api/categories just to get slugs/names to link to - it
+  // never reads article_count at all. But computing it unconditionally
+  // meant every one of those calls also ran a second query pulling
+  // EVERY row's category_id out of the entire `articles` table, just to
+  // tally counts nobody was displaying. Made opt-out (defaulting to true
+  // so every existing caller - the admin categories page, the public
+  // category listings that DO show "12 articles" - keeps working
+  // unchanged) so the nav-only call sites can skip it.
+  includeCounts: boolean = true
+): Promise<CategoryWithSubs[]> => {
+  const supabase = createAdminClient();
+
+  let query = supabase.from('categories').select('*').order('order_index', { ascending: true });
+  if (!includeInactive) {
+    query = query.eq('is_active', true);
+  }
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('Error fetching categories:', error);
+    return [];
+  }
+
+  // Tally article counts per category (top-level and subcategory rows
+  // alike) in one query instead of one count query per category - the
+  // admin categories page shows this next to each row.
+  const countByCategory = new Map<string, number>();
+  if (includeCounts) {
+    const { data: articleRows } = await supabase.from('articles').select('category_id');
+    (articleRows || []).forEach((row: any) => {
+      if (!row.category_id) return;
+      countByCategory.set(row.category_id, (countByCategory.get(row.category_id) || 0) + 1);
+    });
+  }
+
+  const categoryMap = new Map<string, CategoryWithSubs>();
+  const rootCategories: CategoryWithSubs[] = [];
+
+  data.forEach((cat: any) => {
+    categoryMap.set(cat.id, { ...cat, article_count: countByCategory.get(cat.id) || 0, subcategories: [] });
+  });
+
+  data.forEach((cat: any) => {
+    const categoryWithSubs = categoryMap.get(cat.id)!;
+    if (cat.parent_id) {
+      const parent = categoryMap.get(cat.parent_id);
+      if (parent) {
+        parent.subcategories.push(categoryWithSubs);
+      }
+    } else {
+      rootCategories.push(categoryWithSubs);
+    }
+  });
+
+  rootCategories.forEach(root => {
+    root.subcategories.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+  });
+
+  return rootCategories;
+});
+
+export async function getCategoryBySlug(slug: string): Promise<Category | null> {
+  const supabase = createAdminClient();
+  
+  const { data, error } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('slug', slug)
+    .single();
+
+  if (error) {
+    console.error('Error fetching category:', error);
+    return null;
+  }
+
+  return data;
+}
+
+export async function getCategoryById(id: string): Promise<Category | null> {
+  const supabase = createAdminClient();
+
+  const { data, error } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    console.error('Error fetching category:', error);
+    return null;
+  }
+
+  return data;
+}
+
+export interface CreateCategoryData {
+  name: string;
+  slug?: string;
+  description?: string;
+  /** Set to create/reassign this as a subcategory of another category's
+   *  id. A row with no parent_id is a top-level category. */
+  parent_id?: string | null;
+  order_index?: number;
+  is_active?: boolean;
+}
+
+function slugifyName(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+export async function createCategory(
+  data: CreateCategoryData
+): Promise<{ success: boolean; error?: string; category?: Category }> {
+  if (!data.name?.trim()) {
+    return { success: false, error: 'Le nom de la catégorie est requis.' };
+  }
+
+  const supabase = createAdminClient();
+  const row = {
+    name: data.name.trim(),
+    slug: data.slug?.trim() || slugifyName(data.name),
+    description: data.description || null,
+    parent_id: data.parent_id || null,
+    order_index: data.order_index ?? 0,
+    is_active: data.is_active ?? true,
+  };
+
+  const { data: inserted, error } = await supabase.from('categories').insert([row]).select('*').single();
+  if (error) {
+    console.error('Error creating category:', error);
+    // A duplicate slug is the most likely real-world failure here (slug
+    // has a UNIQUE constraint) - surface something readable instead of
+    // the raw Postgres constraint-violation text.
+    if (error.code === '23505') {
+      return { success: false, error: `Une catégorie avec le slug "${row.slug}" existe déjà.` };
+    }
+    return { success: false, error: error.message };
+  }
+  return { success: true, category: inserted };
+}
+
+export async function updateCategory(
+  id: string,
+  data: Partial<CreateCategoryData>
+): Promise<{ success: boolean; error?: string; category?: Category }> {
+  const supabase = createAdminClient();
+  const row: Record<string, any> = {};
+  if (data.name !== undefined) row.name = data.name;
+  if (data.slug !== undefined) row.slug = data.slug;
+  if (data.description !== undefined) row.description = data.description || null;
+  if (data.parent_id !== undefined) row.parent_id = data.parent_id || null;
+  if (data.order_index !== undefined) row.order_index = data.order_index;
+  if (data.is_active !== undefined) row.is_active = data.is_active;
+
+  const { data: updated, error } = await supabase.from('categories').update(row).eq('id', id).select('*').single();
+  if (error) {
+    console.error('Error updating category:', error);
+    if (error.code === '23505') {
+      return { success: false, error: `Une catégorie avec ce slug existe déjà.` };
+    }
+    return { success: false, error: error.message };
+  }
+  return { success: true, category: updated };
+}
+
+export async function deleteCategory(id: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = createAdminClient();
+
+  // Block deletes that would orphan subcategories or leave articles
+  // pointing at a category_id that no longer exists, instead of letting
+  // it fail (or silently cascade) at the database level with a message
+  // nobody in the admin UI could make sense of.
+  const { count: subCount } = await supabase
+    .from('categories')
+    .select('*', { count: 'exact', head: true })
+    .eq('parent_id', id);
+  if (subCount && subCount > 0) {
+    return {
+      success: false,
+      error: `Cette catégorie a ${subCount} sous-catégorie(s). Supprimez-les ou déplacez-les d'abord.`,
+    };
+  }
+
+  const { count: articleCount } = await supabase
+    .from('articles')
+    .select('*', { count: 'exact', head: true })
+    .eq('category_id', id);
+  if (articleCount && articleCount > 0) {
+    return {
+      success: false,
+      error: `Cette catégorie contient encore ${articleCount} article(s). Réassignez-les avant de la supprimer.`,
+    };
+  }
+
+  const { error } = await supabase.from('categories').delete().eq('id', id);
+  if (error) {
+    console.error('Error deleting category:', error);
+    return { success: false, error: error.message };
+  }
+  return { success: true };
+}
+
+/**
+ * Resolves a top-level category by slug, plus the ids of its direct
+ * children (subcategories) - i.e. rows in `categories` with parent_id
+ * equal to this category's id. Returns null if no active category with
+ * this slug exists (callers should treat that as "show the empty state",
+ * not an error).
+ */
+export async function getCategoryWithChildIdsBySlug(
+  slug: string
+): Promise<{ category: Category; childIds: string[] } | null> {
+  const supabase = createAdminClient();
+
+  const { data: category, error } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('slug', slug)
+    .eq('is_active', true)
+    .is('parent_id', null)
+    .single();
+
+  if (error || !category) {
+    return null;
+  }
+
+  const { data: children } = await supabase
+    .from('categories')
+    .select('id')
+    .eq('parent_id', category.id)
+    .eq('is_active', true);
+
+  return {
+    category,
+    childIds: (children || []).map((c: { id: string }) => c.id),
+  };
+}
+
+/**
+ * Resolves a subcategory by its slug AND its parent category's slug (so
+ * two different parents can each have a subcategory with the same slug
+ * without colliding). Returns null if not found (→ empty state).
+ */
+export async function getSubcategoryBySlug(
+  parentSlug: string,
+  subSlug: string
+): Promise<{ parent: Category; subcategory: Category } | null> {
+  const supabase = createAdminClient();
+
+  const { data: parent, error: parentError } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('slug', parentSlug)
+    .eq('is_active', true)
+    .is('parent_id', null)
+    .single();
+
+  if (parentError || !parent) {
+    return null;
+  }
+
+  const { data: subcategory, error: subError } = await supabase
+    .from('categories')
+    .select('*')
+    .eq('slug', subSlug)
+    .eq('parent_id', parent.id)
+    .eq('is_active', true)
+    .single();
+
+  if (subError || !subcategory) {
+    return null;
+  }
+
+  return { parent, subcategory };
+}

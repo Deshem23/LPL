@@ -1,0 +1,409 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { 
+  Plus, 
+  Search, 
+  MoreVertical,
+  Edit,
+  Trash2,
+  Eye,
+  CheckCircle,
+  Clock,
+  Calendar,
+  FileText,
+  AlertCircle
+} from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useToast } from '@/components/ui/use-toast';
+import { formatDate, timeAgo } from '@/lib/utils';
+
+const statusColors = {
+  draft: 'bg-gray-500',
+  review: 'bg-yellow-500',
+  scheduled: 'bg-blue-500',
+  published: 'bg-green-500',
+  archived: 'bg-red-500',
+};
+
+const statusLabels = {
+  draft: 'Brouillon',
+  review: 'En relecture',
+  scheduled: 'Programmé',
+  published: 'Publié',
+  archived: 'Archivé',
+};
+
+const statusIcons = {
+  draft: <FileText className="h-3 w-3" />,
+  review: <AlertCircle className="h-3 w-3" />,
+  scheduled: <Calendar className="h-3 w-3" />,
+  published: <CheckCircle className="h-3 w-3" />,
+  archived: <Clock className="h-3 w-3" />,
+};
+
+export default function AdminArticlesPage() {
+  const [articles, setArticles] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const { toast } = useToast();
+  const router = useRouter();
+
+  useEffect(() => {
+    loadArticles();
+  }, []);
+
+  const loadArticles = async () => {
+    setLoading(true);
+    try {
+      // Fetch ALL articles via the API route (server-side, uses the
+      // Supabase service-role client). Do NOT call getArticles()
+      // directly from this client component: it uses createAdminClient(),
+      // which needs SUPABASE_SERVICE_ROLE_KEY — that env var is never
+      // sent to the browser, so calling it here silently falls back to
+      // the anon key and gets filtered by RLS to "published" only.
+      const response = await fetch('/api/articles?status=all&limit=100', { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+      const result = await response.json();
+      console.log('📊 Loaded articles:', result.articles.length);
+      console.log('📊 Statuses:', result.articles.map((a: any) => a.status));
+      setArticles(result.articles);
+    } catch (error) {
+      console.error('Error loading articles:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de charger les articles.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Êtes-vous sûr de vouloir supprimer cet article ?')) return;
+    
+    try {
+      // Same reasoning as loadArticles: go through the API route (which
+      // also checks auth via getCurrentUser()) instead of calling the
+      // service-role-backed deleteArticle() directly from the browser.
+      const response = await fetch(`/api/articles/${id}`, { method: 'DELETE' });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        toast({
+          title: 'Article supprimé',
+          description: 'L\'article a été supprimé avec succès.',
+        });
+        loadArticles();
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de supprimer l\'article.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Filter articles based on search and status
+  const filteredArticles = articles.filter(article => {
+    const matchesSearch = article.title?.toLowerCase().includes(search.toLowerCase()) ||
+                         article.excerpt?.toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || article.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  // Calculate stats
+  const stats = {
+    total: articles.length,
+    published: articles.filter(a => a.status === 'published').length,
+    scheduled: articles.filter(a => a.status === 'scheduled').length,
+    review: articles.filter(a => a.status === 'review').length,
+    draft: articles.filter(a => a.status === 'draft').length,
+    archived: articles.filter(a => a.status === 'archived').length,
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-sm text-muted-foreground">Chargement des articles...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Articles</h1>
+          <p className="text-muted-foreground">Gérez tous vos articles</p>
+        </div>
+        <Button asChild className="gap-2">
+          <Link href="/admin/articles/new">
+            <Plus className="h-4 w-4" />
+            Nouvel article
+          </Link>
+        </Button>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total</p>
+                <p className="text-2xl font-bold">{stats.total}</p>
+              </div>
+              <FileText className="h-8 w-8 text-primary/20" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Publiés</p>
+                <p className="text-2xl font-bold">{stats.published}</p>
+              </div>
+              <CheckCircle className="h-8 w-8 text-green-500/20" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Programmés</p>
+                <p className="text-2xl font-bold">{stats.scheduled}</p>
+              </div>
+              <Calendar className="h-8 w-8 text-blue-500/20" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">En relecture</p>
+                <p className="text-2xl font-bold">{stats.review}</p>
+              </div>
+              <AlertCircle className="h-8 w-8 text-yellow-500/20" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Brouillons</p>
+                <p className="text-2xl font-bold">{stats.draft}</p>
+              </div>
+              <FileText className="h-8 w-8 text-gray-500/20" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Archivés</p>
+                <p className="text-2xl font-bold">{stats.archived}</p>
+              </div>
+              <Clock className="h-8 w-8 text-red-500/20" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-1 items-center gap-2">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Rechercher un article..."
+                  className="pl-9"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Tous les statuts" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">📊 Tous les statuts</SelectItem>
+                  <SelectItem value="published">✅ Publiés</SelectItem>
+                  <SelectItem value="scheduled">📅 Programmés</SelectItem>
+                  <SelectItem value="review">🔍 En relecture</SelectItem>
+                  <SelectItem value="draft">📝 Brouillons</SelectItem>
+                  <SelectItem value="archived">📦 Archivés</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>{filteredArticles.length} articles</span>
+              <button 
+                onClick={loadArticles}
+                className="text-primary hover:underline text-xs"
+              >
+                Rafraîchir
+              </button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Table */}
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Titre</TableHead>
+                <TableHead>Statut</TableHead>
+                <TableHead>Catégorie</TableHead>
+                <TableHead>Auteur</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Vues</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredArticles.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    {search || statusFilter !== 'all' 
+                      ? 'Aucun article ne correspond à vos filtres.'
+                      : 'Aucun article trouvé. Créez votre premier article !'}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredArticles.map((article) => (
+                  <TableRow key={article.id}>
+                    <TableCell className="font-medium">
+                      <div className="line-clamp-1 max-w-[200px]">{article.title}</div>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {article.is_breaking && (
+                          <Badge variant="destructive" className="text-[10px]">
+                            🔴 Breaking
+                          </Badge>
+                        )}
+                        {article.is_pinned && (
+                          <Badge variant="default" className="text-[10px] bg-red-500">
+                            📌 À la une
+                          </Badge>
+                        )}
+                        {article.is_trending && (
+                          <Badge variant="default" className="text-[10px] bg-orange-500">
+                            🔥 Tendance
+                          </Badge>
+                        )}
+                        {article.is_suggestion && (
+                          <Badge variant="default" className="text-[10px] bg-purple-500">
+                            💡 Suggestion
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className={`${statusColors[article.status as keyof typeof statusColors] || 'bg-gray-500'} text-white flex items-center gap-1 w-fit`}>
+                        {statusIcons[article.status as keyof typeof statusIcons]}
+                        {statusLabels[article.status as keyof typeof statusLabels] || article.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div>
+                        {/* category_id can point at either a top-level
+                            category or a subcategory row (subcategories
+                            are just categories with a parent_id) - when
+                            it's a subcategory, show its parent's name too. */}
+                        {article.category?.parent?.name ? (
+                          <>
+                            {article.category.parent.name}
+                            <span className="text-xs text-muted-foreground ml-1">
+                              / {article.category.name}
+                            </span>
+                          </>
+                        ) : (
+                          article.category?.name || '-'
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>{article.author?.name || '-'}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {article.published_at ? timeAgo(article.published_at) : timeAgo(article.created_at)}
+                    </TableCell>
+                    <TableCell>{article.view_count || 0}</TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem asChild>
+                            <Link href={`/admin/articles/${article.id}`}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Modifier
+                            </Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem asChild>
+                            <Link href={`/articles/${article.slug}`} target="_blank">
+                              <Eye className="mr-2 h-4 w-4" />
+                              Voir
+                            </Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            className="text-destructive"
+                            onClick={() => handleDelete(article.id)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Supprimer
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

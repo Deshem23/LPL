@@ -1,0 +1,335 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
+import { ArrowLeft, Search, MapPin, Newspaper } from 'lucide-react';
+import { WiSunrise, WiSunset } from 'react-icons/wi';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { getWeather, WeatherData, HAITI_CITIES } from '@/lib/services/weather';
+import { Sidebar } from '@/components/shared/sidebar';
+import { formatDate } from '@/lib/utils';
+
+interface WeatherPageProps {
+  params: { locale: string };
+  searchParams: { city?: string };
+}
+
+export default function WeatherPage({ params, searchParams }: WeatherPageProps) {
+  const { locale } = params;
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [weatherError, setWeatherError] = useState(false);
+  const [searchCity, setSearchCity] = useState(searchParams.city || 'Port-au-Prince');
+
+  // Site-wide latest articles, for the Sidebar's Trending/Latest widgets -
+  // same call the homepage and category pages make. This used to be
+  // limit: 5, which is why "Tendance" looked broken here: with only 5
+  // articles to choose from, TrendingArticles (see trending-articles.tsx)
+  // usually had nothing flagged is_trending among them and fell back to
+  // sorting that tiny slice by views - not a real sitewide ranking.
+  const [sidebarArticles, setSidebarArticles] = useState([]);
+
+  // Real articles published in the "Société > Météo" subcategory (see
+  // migrations/13_restructure_category_taxonomy.sql - slug 'meteo' under
+  // top-level 'societe'). This used to keyword-match the selected city's
+  // name against article title/excerpt/content, which surfaced whatever
+  // unrelated article happened to mention a city's name instead of the
+  // site's actual weather coverage - and doesn't depend on which city is
+  // selected, since the subcategory is the same regardless.
+  const [meteoArticles, setMeteoArticles] = useState<any[]>([]);
+  const [meteoArticlesLoading, setMeteoArticlesLoading] = useState(true);
+
+  const fetchWeather = async (city: string) => {
+    setLoading(true);
+    setWeatherError(false);
+    try {
+      const data = await getWeather(city);
+      setWeather(data);
+    } catch (error) {
+      console.error('Error fetching weather:', error);
+      setWeatherError(true);
+      setWeather(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchWeather(searchCity);
+  }, [searchCity]);
+
+  useEffect(() => {
+    const fetchSidebarArticles = async () => {
+      try {
+        const qs = new URLSearchParams({ locale, limit: '20' });
+        const response = await fetch(`/api/public/articles?${qs.toString()}`, { cache: 'no-store' });
+        if (!response.ok) throw new Error('Failed to fetch articles');
+        const result = await response.json();
+        setSidebarArticles(result.articles || []);
+      } catch (error) {
+        console.error('Error fetching articles:', error);
+      }
+    };
+    fetchSidebarArticles();
+  }, [locale]);
+
+  useEffect(() => {
+    const fetchMeteoArticles = async () => {
+      setMeteoArticlesLoading(true);
+      try {
+        const qs = new URLSearchParams({
+          locale,
+          limit: '6',
+          categorySlug: 'societe',
+          subcategorySlug: 'meteo',
+        });
+        const response = await fetch(`/api/public/articles?${qs.toString()}`, { cache: 'no-store' });
+        if (!response.ok) throw new Error('Failed to fetch weather articles');
+        const result = await response.json();
+        setMeteoArticles(result.articles || []);
+      } catch (error) {
+        console.error('Error fetching weather articles:', error);
+        setMeteoArticles([]);
+      } finally {
+        setMeteoArticlesLoading(false);
+      }
+    };
+    fetchMeteoArticles();
+  }, [locale]);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const formData = new FormData(e.target as HTMLFormElement);
+    const city = formData.get('city') as string;
+    if (city.trim()) {
+      setSearchCity(city.trim());
+      window.history.pushState({}, '', `?city=${encodeURIComponent(city.trim())}`);
+    }
+  };
+
+  const handleCitySelect = (city: string) => {
+    setSearchCity(city);
+    window.history.pushState({}, '', `?city=${encodeURIComponent(city)}`);
+  };
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 page-container">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+          <div className="lg:col-span-8">
+            <div className="flex items-center gap-4 mb-6">
+              <div className="h-10 w-10 bg-muted/50 animate-pulse rounded-full" />
+              <div className="h-8 w-32 bg-muted/50 animate-pulse rounded" />
+            </div>
+            <div className="rounded-3xl bg-muted/30 p-8 animate-pulse">
+              <div className="h-32 w-full bg-muted/50 rounded-2xl" />
+            </div>
+            <div className="mt-8 grid grid-cols-5 gap-4">
+              {[1,2,3,4,5].map((i) => (
+                <div key={i} className="h-24 bg-muted/50 animate-pulse rounded-xl" />
+              ))}
+            </div>
+          </div>
+          <div className="lg:col-span-4">
+            <div className="h-[600px] bg-muted/50 animate-pulse rounded-2xl" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto px-4 page-container">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+        {/* Main Content - 8 columns */}
+        <div className="lg:col-span-8">
+          <Link
+            href={`/${locale}`}
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Retour à l'accueil
+          </Link>
+
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6">
+            <h1 className="text-3xl font-bold">Météo</h1>
+            <form onSubmit={handleSearch} className="flex gap-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="text"
+                  name="city"
+                  placeholder="Rechercher une ville..."
+                  defaultValue={searchCity}
+                  className="pl-10 w-[200px]"
+                />
+              </div>
+              <Button type="submit">Rechercher</Button>
+            </form>
+          </div>
+
+          {/* The 10 cities always on offer: Port-au-Prince plus the
+              chef-lieu of each of Haiti's other 9 départements (see
+              HAITI_CITIES in lib/services/weather.ts). */}
+          <div className="flex flex-wrap gap-2 mb-6">
+            {HAITI_CITIES.map((city) => (
+              <button
+                key={city.name}
+                onClick={() => handleCitySelect(city.name)}
+                title={city.department}
+                className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                  searchCity === city.name
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted hover:bg-muted/80'
+                }`}
+              >
+                {city.name}
+              </button>
+            ))}
+          </div>
+
+          {weatherError && (
+            <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 mb-8 text-center">
+              <p className="font-medium text-destructive">Impossible de récupérer la météo pour "{searchCity}".</p>
+              <p className="text-sm text-muted-foreground mt-1">Vérifiez le nom de la ville ou réessayez dans un instant.</p>
+            </div>
+          )}
+
+          {weather && (
+            <div className="rounded-3xl bg-gradient-to-br from-blue-500 to-blue-600 text-white p-8 mb-8">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-6xl">{weather.icon}</span>
+                    <div>
+                      <span className="text-5xl font-bold">{weather.temperature}°C</span>
+                      <p className="text-lg text-white/80">{weather.condition}</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <MapPin className="h-4 w-4" />
+                    <span className="text-lg">{weather.city}</span>
+                  </div>
+                </div>
+                <div className="mt-4 md:mt-0 flex flex-wrap gap-6 text-sm">
+                  <div>
+                    <p className="text-white/60">Ressenti</p>
+                    <p className="font-semibold">{weather.feelsLike}°C</p>
+                  </div>
+                  <div>
+                    <p className="text-white/60">Humidité</p>
+                    <p className="font-semibold">{weather.humidity}%</p>
+                  </div>
+                  <div>
+                    <p className="text-white/60">Vent</p>
+                    <p className="font-semibold">{weather.windSpeed} km/h</p>
+                  </div>
+                  <div>
+                    <p className="text-white/60 flex items-center gap-1">
+                      <WiSunrise className="h-4 w-4" /> Lever
+                    </p>
+                    <p className="font-semibold">{weather.sunrise}</p>
+                  </div>
+                  <div>
+                    <p className="text-white/60 flex items-center gap-1">
+                      <WiSunset className="h-4 w-4" /> Coucher
+                    </p>
+                    <p className="font-semibold">{weather.sunset}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {weather && (
+            <div className="mb-10">
+              <h2 className="text-xl font-semibold mb-4">Prévisions sur 5 jours</h2>
+              <div className="grid grid-cols-5 gap-3">
+                {weather.forecast.map((day, index) => (
+                  <div
+                    key={index}
+                    className="rounded-xl bg-muted/30 p-3 text-center hover:bg-muted/50 transition-colors"
+                  >
+                    <p className="text-sm font-medium">{day.day}</p>
+                    <span className="text-3xl block my-2">{day.icon}</span>
+                    <p className="text-sm font-semibold">{day.temperature}°C</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{day.condition}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Real articles from the Société > Météo subcategory - see the
+              fetchMeteoArticles effect above. */}
+          <div>
+            <h2 className="text-xl font-semibold mb-4">Actualités Météo</h2>
+            {meteoArticlesLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-20 bg-muted/30 animate-pulse rounded-xl" />
+                ))}
+              </div>
+            ) : meteoArticles.length > 0 ? (
+              <div className="space-y-3">
+                {meteoArticles.map((article: any) => (
+                  <Link
+                    key={article.id}
+                    href={`/${locale}/articles/${article.slug}`}
+                    className="group flex gap-4 rounded-xl border p-3 transition-colors hover:bg-muted/50"
+                  >
+                    <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-muted">
+                      {article.coverImage ? (
+                        <Image
+                          src={article.coverImage}
+                          alt={article.title}
+                          fill
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5">
+                          <Newspaper className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="line-clamp-2 text-sm font-semibold group-hover:text-primary transition-colors">
+                        {article.title}
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {formatDate(article.createdAt)}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Aucun article publié dans la catégorie Météo pour le moment.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="lg:col-span-4">
+          <Sidebar
+            locale={locale}
+            articles={sidebarArticles}
+            variant="default"
+            showCategories={true}
+            showNewsletter={true}
+            showSearch={false}
+            showLatestNews={true}
+            showPinned={false}
+            showAds={true}
+            showSocialShare={true}
+            showTrending={true}
+            showWeather={false}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

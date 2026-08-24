@@ -1,0 +1,115 @@
+'use client';
+
+import Link from 'next/link';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Mail, Twitter, Linkedin, Globe, ArrowRight } from 'lucide-react';
+
+interface Author {
+  id: string;
+  name: string;
+  avatar?: string;
+  bio?: string;
+  email?: string;
+  twitter?: string;
+  linkedin?: string;
+  website?: string;
+  role?: string;
+}
+
+interface AuthorBioProps {
+  author: Author;
+  locale?: string;
+}
+
+export function AuthorBio({ author, locale = 'fr' }: AuthorBioProps) {
+  return (
+    <div className="rounded-2xl border bg-gradient-to-br from-muted/30 to-muted/10 p-6 md:p-8">
+      <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
+        <Link 
+          href={`/${locale}/author/${author.id}`} 
+          className="flex-shrink-0 group"
+        >
+          <Avatar className="h-16 w-16 ring-4 ring-primary/10 shadow-xl cursor-pointer hover:ring-primary/20 transition-all group-hover:scale-105">
+            <AvatarImage src={author.avatar} />
+            <AvatarFallback className="bg-primary/10 text-primary font-bold text-xl">
+              {author.name.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+        </Link>
+        <div className="flex-1">
+          <div className="flex flex-wrap items-center gap-3">
+            <Link 
+              href={`/${locale}/author/${author.id}`} 
+              className="hover:underline group"
+            >
+              <h4 className="text-xl font-bold group-hover:text-primary transition-colors">
+                {author.name}
+              </h4>
+            </Link>
+            {author.role && (
+              <span className="text-sm text-muted-foreground bg-muted px-3 py-1 rounded-full">
+                {author.role}
+              </span>
+            )}
+            <Link 
+              href={`/${locale}/author/${author.id}`}
+              className="inline-flex items-center gap-1 text-sm text-primary hover:underline ml-auto"
+            >
+              Voir le profil
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+          {author.bio && (
+            <p className="mt-2 text-muted-foreground leading-relaxed max-w-2xl">
+              {author.bio}
+            </p>
+          )}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {author.email && (
+              <a
+                href={`mailto:${author.email}`}
+                className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors"
+              >
+                <Mail className="h-4 w-4" />
+                Email
+              </a>
+            )}
+            {author.twitter && (
+              <a
+                href={`https://twitter.com/${author.twitter}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-[#1DA1F2] transition-colors"
+              >
+                <Twitter className="h-4 w-4" />
+                Twitter
+              </a>
+            )}
+            {author.linkedin && (
+              <a
+                href={`https://linkedin.com/in/${author.linkedin}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-[#0A66C2] transition-colors"
+              >
+                <Linkedin className="h-4 w-4" />
+                LinkedIn
+              </a>
+            )}
+            {author.website && (
+              <a
+                href={author.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors"
+              >
+                <Globe className="h-4 w-4" />
+                Site web
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

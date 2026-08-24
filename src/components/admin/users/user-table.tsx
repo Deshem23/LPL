@@ -1,0 +1,218 @@
+'use client';
+
+import { useState } from 'react';
+import Link from 'next/link';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { MoreVertical, Edit, Trash2, UserCog, Shield, Mail, Calendar, Lock } from 'lucide-react';
+import { format } from 'date-fns';
+
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  avatar?: string;
+  role: 'admin' | 'editor' | 'writer' | 'contributor';
+  status: 'active' | 'inactive' | 'suspended';
+  createdAt: string;
+  lastLogin?: string;
+  articlesCount?: number;
+}
+
+interface UserTableProps {
+  users: User[];
+  onDelete?: (id: string) => void;
+  onEdit?: (user: User) => void;
+  locale: string;
+}
+
+const roleColors = {
+  admin: 'bg-red-500 text-white',
+  editor: 'bg-blue-500 text-white',
+  writer: 'bg-green-500 text-white',
+  contributor: 'bg-yellow-500 text-white',
+};
+
+const roleLabels = {
+  admin: 'Administrateur',
+  editor: 'Éditeur',
+  writer: 'Rédacteur',
+  contributor: 'Contributeur',
+};
+
+const statusColors = {
+  active: 'bg-green-500 text-white',
+  inactive: 'bg-gray-500 text-white',
+  suspended: 'bg-red-500 text-white',
+};
+
+const statusLabels = {
+  active: 'Actif',
+  inactive: 'Inactif',
+  suspended: 'Suspendu',
+};
+
+export function UserTable({ users, onDelete, onEdit, locale }: UserTableProps) {
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!deleteId) return;
+    setIsDeleting(true);
+    try {
+      await fetch(`/api/users/${deleteId}`, { method: 'DELETE' });
+      if (onDelete) onDelete(deleteId);
+      setDeleteId(null);
+    } catch (error) {
+      console.error('Failed to delete user:', error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Utilisateur</TableHead>
+              <TableHead>Rôle</TableHead>
+              <TableHead>Statut</TableHead>
+              <TableHead className="hidden md:table-cell">Articles</TableHead>
+              <TableHead className="hidden lg:table-cell">Inscrit le</TableHead>
+              <TableHead className="hidden lg:table-cell">Dernière connexion</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {users.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  Aucun utilisateur trouvé. Invitez le premier membre de votre équipe !
+                </TableCell>
+              </TableRow>
+            ) : (
+              users.map((user) => (
+                <TableRow key={user.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={user.avatar} />
+                        <AvatarFallback>
+                          {user.name.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="font-medium">{user.name}</p>
+                        <p className="text-xs text-muted-foreground">{user.email}</p>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={roleColors[user.role]}>
+                      {roleLabels[user.role]}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className={statusColors[user.status]}>
+                      {statusLabels[user.status]}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    {user.articlesCount || 0}
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell">
+                    {format(new Date(user.createdAt), 'MMM d, yyyy')}
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell">
+                    {user.lastLogin ? format(new Date(user.lastLogin), 'MMM d, yyyy') : 'Jamais'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => onEdit?.(user)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Modifier
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <Shield className="mr-2 h-4 w-4" />
+                          Gérer les permissions
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <Mail className="mr-2 h-4 w-4" />
+                          Envoyer un e-mail
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(user.id)}>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Supprimer
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer l&apos;utilisateur</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr(e) de vouloir supprimer cet utilisateur ? Cette action est irréversible.
+              Tout le contenu associé sera réassigné ou supprimé.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {isDeleting ? 'Suppression...' : 'Supprimer'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}

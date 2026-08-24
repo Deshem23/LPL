@@ -1,0 +1,121 @@
+import { Suspense } from 'react';
+import { notFound } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
+import { Skeleton } from '@/components/ui/skeleton';
+import { getCategoriesWithSubcategories } from '@/lib/services/category-service';
+import { getArticlesByCategory, getArticles } from '@/lib/api/articles';
+import { getSiteSettings } from '@/lib/services/settings-service';
+import { CategoryClient } from './category-client';
+
+// Categories/articles change via the admin CRUD at any time - without this,
+// Next.js's default fetch caching (Next 14 caches fetch() by default,
+// including supabase-js's calls under the hood, since it patches the
+// global fetch) can keep serving a stale result - e.g. a "Category Not
+// Found" 404 for a subcategory that was later created/fixed, even after
+// the underlying data is correct. This forces every request to hit the
+// database fresh.
+export const dynamic = 'force-dynamic';
+
+interface CategoryPageProps {
+  params: { locale: string; slug: string };
+  searchParams: { page?: string; search?: string; date?: string };
+}
+
+// Resolves the real, admin-managed category (and its subcategories) by
+// slug - this used to look the slug up in a hardcoded 9-item config file
+// (lib/config/categories.ts), so any category created in /admin/categories
+// 404'd on its own public page even though articles could be assigned to
+// it. Shaped to match the {slug, label, subcategories} shape category-client.tsx
+// expects, so that component needs no changes.
+async function resolveCategory(slug: string) {
+  const categories = await getCategoriesWithSubcategories(false);
+  const dbCategory = categories.find((c) => c.slug === slug);
+  if (!dbCategory) return null;
+
+  return {
+    slug: dbCategory.slug,
+    label: dbCategory.name,
+    subcategories: (dbCategory.subcategories || []).map((s) => ({
+      slug: s.slug,
+      label: s.name,
+    })),
+  };
+}
+
+export async function generateMetadata({
+  params: { locale, slug },
+}: {
+  params: { locale: string; slug: string };
+}) {
+  const category = await resolveCategory(slug);
+
+  if (!category) {
+    return {
+      title: 'Category Not Found',
+    };
+  }
+
+  return {
+    title: `${category.label} - Les Pages Libres`,
+    description: `Dernières actualités et articles sur ${category.label}`,
+  };
+}
+
+export default async function CategoryPage({
+  params: { locale, slug },
+  searchParams,
+}: CategoryPageProps) {
+  const category = await resolveCategory(slug);
+
+  if (!category) {
+    notFound();
+  }
+
+  const page = parseInt(searchParams.page || '1');
+  const search = searchParams.search || '';
+  const date = searchParams.date || '';
+
+  // Page size comes from Settings > General > "Articles par page" - was
+  // saved but never actually read anywhere, so changing it in the admin
+  // had no effect on this listing.
+  const { articles_per_page: articlesPerPage } = await getSiteSettings();
+
+  // Scoped to this category AND all of its subcategories (resolved
+  // against the real categories table, not the static nav config) - so
+  // nothing published under a subcategory is missing from its parent
+  // category's listing.
+  const { articles, total, totalPages } = await getArticlesByCategory({
+    locale,
+    categorySlug: slug,
+    page,
+    limit: articlesPerPage || 11,
+    search: search || undefined,
+    date: date || undefined,
+  });
+
+  // Site-wide latest articles for the sidebar's Trending/Latest widgets -
+  // same call the homepage makes - so those widgets show the same thing
+  // here as they do on the homepage, instead of only-this-category
+  // content (which is what `articles` above is scoped to).
+  let sidebarArticles = articles;
+  try {
+    const sitewide = await getArticles({ locale, limit: 20 });
+    sidebarArticles = sitewide.articles;
+  } catch (error) {
+    console.error('Error fetching site-wide sidebar articles:', error);
+  }
+
+  return (
+    <CategoryClient
+      locale={locale}
+      category={category}
+      articles={articles}
+      sidebarArticles={sidebarArticles}
+      total={total}
+      totalPages={totalPages}
+      currentPage={page}
+      search={search}
+      date={date}
+    />
+  );
+}

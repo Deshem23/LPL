@@ -1,0 +1,671 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Neutral system */
+    --background: 245 246 248;
+    --foreground: 18 18 20;
+    --card: 255 255 255;
+    --card-foreground: 18 18 20;
+    --popover: 255 255 255;
+    --popover-foreground: 18 18 20;
+
+    /* Apple Blue primary system */
+    --primary: 0 113 227; /* #0071e3 */
+    --primary-dark: 0 85 179; /* #0055b3 */
+    --primary-light: 96 165 250; /* #60a5fa */
+    --primary-foreground: 255 255 255;
+
+    --secondary: 240 241 243;
+    --secondary-foreground: 18 18 20;
+    --muted: 240 241 243;
+    --muted-foreground: 120 124 130;
+    --accent: 240 241 243;
+    --accent-foreground: 18 18 20;
+
+    /* Status colors */
+    --success: 34 197 94;
+    --warning: 234 179 8;
+    --destructive: 239 68 68;
+    --destructive-foreground: 255 255 255;
+
+    --border: 220 222 225;
+    --input: 220 222 225;
+    --ring: 0 113 227;
+    --radius: 0.5rem;
+
+    /* Spacing scale */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 40px;
+  }
+
+  .dark {
+    --background: 18 18 20;
+    --foreground: 245 246 248;
+    --card: 28 28 30;
+    --card-foreground: 245 246 248;
+    --popover: 28 28 30;
+    --popover-foreground: 245 246 248;
+
+    --primary: 0 113 227;
+    --primary-dark: 0 85 179;
+    --primary-light: 96 165 250;
+    --primary-foreground: 255 255 255;
+
+    --secondary: 40 40 42;
+    --secondary-foreground: 245 246 248;
+    --muted: 40 40 42;
+    --muted-foreground: 160 160 165;
+    --accent: 40 40 42;
+    --accent-foreground: 245 246 248;
+
+    --success: 34 197 94;
+    --warning: 234 179 8;
+    --destructive: 239 68 68;
+    --destructive-foreground: 255 255 255;
+
+    --border: 40 40 42;
+    --input: 40 40 42;
+    --ring: 0 113 227;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ============================================================
+   Apple-Inspired Design System
+   ============================================================ */
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Glassmorphism */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.dark .glass {
+  background: rgba(30, 30, 30, 0.7);
+}
+
+/* ---- Typography ---- */
+.apple-title {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, rgb(var(--primary)), rgb(var(--primary-light)));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ---- Cards ---- */
+.apple-card {
+  background: rgb(var(--card));
+  border-radius: 20px;
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgb(var(--border));
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.apple-card:hover {
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+  border-color: rgb(var(--primary));
+}
+
+.dark .apple-card {
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.dark .apple-card:hover {
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Feature cards — flat highlight strips (breaking news bar, pinned rows) with
+   a gradient top accent that appears on hover */
+.feature-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  background: rgb(var(--card));
+  border: 1px solid rgb(var(--border));
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.feature-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, rgb(var(--primary)), rgb(var(--primary-dark)));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.feature-card:hover::before {
+  opacity: 1;
+}
+
+.feature-card:hover {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
+  border-color: rgb(var(--primary));
+}
+
+/* ---- Dividers ---- */
+.section-divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgb(var(--border)), transparent);
+  margin: 40px 0;
+  opacity: 0.6;
+}
+
+.dark .section-divider {
+  opacity: 0.3;
+}
+
+.creative-divider {
+  position: relative;
+  height: 2px;
+  background: linear-gradient(to right, transparent, rgb(var(--border)), transparent);
+  margin: 32px 0;
+  border: none;
+}
+
+.creative-divider::after {
+  content: '✦';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgb(var(--background));
+  padding: 0 12px;
+  color: rgb(var(--muted-foreground));
+  font-size: 12px;
+}
+
+/* ---- Section headers ---- */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.section-header h2 {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.section-header .see-all {
+  font-size: 14px;
+  color: rgb(var(--primary));
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.section-header .see-all:hover {
+  text-decoration: underline;
+}
+
+.creative-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid rgb(var(--border));
+  position: relative;
+}
+
+.creative-section-header::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 60px;
+  height: 2px;
+  background: rgb(var(--primary));
+  border-radius: 2px;
+}
+
+.creative-section-header h2 {
+  font-family: var(--font-newsreader), Georgia, serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, rgb(var(--foreground)), rgb(var(--muted-foreground)));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.creative-section-header .see-all {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgb(var(--primary));
+  padding: 6px 16px;
+  border-radius: 20px;
+  background: rgba(0, 113, 227, 0.1);
+  transition: all 0.2s ease;
+}
+
+.creative-section-header .see-all:hover {
+  background: rgba(0, 113, 227, 0.15);
+  transform: translateX(4px);
+}
+
+@media (max-width: 768px) {
+  .section-header h2,
+  .creative-section-header h2 {
+    font-size: 22px;
+  }
+}
+
+/* ---- Buttons ---- */
+.apple-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(var(--primary));
+  color: rgb(var(--primary-foreground));
+  padding: 10px 24px;
+  border-radius: 980px;
+  font-weight: 500;
+  font-size: 14px;
+  border: none;
+  transition: all 0.3s ease;
+}
+
+.apple-button:hover {
+  background: #0077ed;
+  transform: scale(1.02);
+}
+
+.apple-button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 113, 227, 0.1);
+  color: rgb(var(--primary));
+  padding: 10px 24px;
+  border-radius: 980px;
+  font-weight: 500;
+  font-size: 14px;
+  border: none;
+  transition: all 0.3s ease;
+}
+
+.apple-button-secondary:hover {
+  background: rgba(0, 113, 227, 0.15);
+}
+
+/* ---- List items (trending / sidebar rows) ---- */
+.list-item {
+  padding: 12px 16px;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  border-left: 3px solid transparent;
+}
+
+.list-item:hover {
+  background: rgb(var(--muted));
+  border-left-color: rgb(var(--primary));
+  padding-left: 20px;
+}
+
+/* ---- Category grid ---- */
+.category-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  padding: 24px 20px;
+  background: linear-gradient(135deg, rgb(var(--card)) 0%, rgb(var(--muted)) 100%);
+  border: 1px solid rgb(var(--border));
+  transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  cursor: pointer;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.category-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgb(var(--primary)), rgb(var(--primary-dark)));
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  border-radius: 20px;
+}
+
+.category-card:hover::before {
+  opacity: 1;
+}
+
+.category-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  border-color: rgb(var(--primary));
+}
+
+.category-card .category-emoji,
+.category-card .category-icon {
+  position: relative;
+  z-index: 1;
+  font-size: 28px;
+  margin-bottom: 6px;
+  transition: transform 0.3s ease;
+}
+
+.category-card:hover .category-emoji,
+.category-card:hover .category-icon {
+  transform: scale(1.15) rotate(-5deg);
+}
+
+.category-card .category-name {
+  position: relative;
+  z-index: 1;
+  font-weight: 600;
+  font-size: 15px;
+  color: rgb(var(--foreground));
+  transition: color 0.3s ease;
+}
+
+.category-card:hover .category-name {
+  color: white;
+}
+
+.category-card .category-count {
+  position: relative;
+  z-index: 1;
+  font-size: 12px;
+  color: rgb(var(--muted-foreground));
+  margin-top: 2px;
+  transition: color 0.3s ease;
+}
+
+.category-card:hover .category-count {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Category pastel gradients (light / dark) */
+.category-politics { background: linear-gradient(135deg, #fef2f2, #fee2e2); }
+.category-economy { background: linear-gradient(135deg, #eff6ff, #dbeafe); }
+.category-health { background: linear-gradient(135deg, #f0fdf4, #dcfce7); }
+.category-culture { background: linear-gradient(135deg, #faf5ff, #f3e8ff); }
+.category-sports { background: linear-gradient(135deg, #fffbeb, #fef3c7); }
+.category-technology { background: linear-gradient(135deg, #eef2ff, #e0e7ff); }
+.category-international { background: linear-gradient(135deg, #fdf2f8, #fce7f3); }
+.category-local { background: linear-gradient(135deg, #fefce8, #fef9c3); }
+
+.dark .category-politics { background: linear-gradient(135deg, #450a0a, #7f1d1d); }
+.dark .category-economy { background: linear-gradient(135deg, #0c1e3a, #1e3a5f); }
+.dark .category-health { background: linear-gradient(135deg, #052e16, #14532d); }
+.dark .category-culture { background: linear-gradient(135deg, #2e1065, #4c1d95); }
+.dark .category-sports { background: linear-gradient(135deg, #3d2e00, #7c5c00); }
+.dark .category-technology { background: linear-gradient(135deg, #1a1a4e, #312e81); }
+.dark .category-international { background: linear-gradient(135deg, #3b0a2a, #7a1f5a); }
+.dark .category-local { background: linear-gradient(135deg, #3d3a00, #7c7800); }
+
+/* Legacy per-category icon-wrapper colors, still used on category detail pages */
+.cat-politics .icon-wrapper { background: #fee2e2; color: #dc2626; }
+.dark .cat-politics .icon-wrapper { background: #7f1d1d; color: #fca5a5; }
+
+.cat-economy .icon-wrapper { background: #dbeafe; color: #2563eb; }
+.dark .cat-economy .icon-wrapper { background: #1e3a5f; color: #93c5fd; }
+
+.cat-societe .icon-wrapper { background: #e0e7ff; color: #4f46e5; }
+.dark .cat-societe .icon-wrapper { background: #312e81; color: #a5b4fc; }
+
+.cat-sante .icon-wrapper { background: #d1fae5; color: #059669; }
+.dark .cat-sante .icon-wrapper { background: #064e3b; color: #6ee7b7; }
+
+.cat-international .icon-wrapper { background: #fce7f3; color: #db2777; }
+.dark .cat-international .icon-wrapper { background: #831843; color: #f9a8d4; }
+
+.cat-technologie .icon-wrapper { background: #e0f2fe; color: #0284c7; }
+.dark .cat-technologie .icon-wrapper { background: #0c4a6e; color: #7dd3fc; }
+
+.cat-sport .icon-wrapper { background: #fef3c7; color: #d97706; }
+.dark .cat-sport .icon-wrapper { background: #78350f; color: #fcd34d; }
+
+.cat-insolite .icon-wrapper { background: #ede9fe; color: #7c3aed; }
+.dark .cat-insolite .icon-wrapper { background: #4c1d95; color: #c4b5fd; }
+
+/* ---- Misc UI ---- */
+
+/* Image hover zoom */
+.image-zoom {
+  transition: transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.group:hover .image-zoom {
+  transform: scale(1.03);
+}
+
+/* Breaking-news ticker marquee - layout + hover-pause only. The actual
+   animation (name/duration/timing) is intentionally NOT set here.
+   This block used to ALSO declare
+   `animation: scroll-left 45s linear infinite;` with its own
+   @keyframes scroll-left - a second, hand-written definition of the
+   exact same .animate-scroll class Tailwind generates from
+   tailwind.config.js's animation.scroll ("scroll 14s linear infinite").
+   Both rules matched the same elements at equal specificity, and since
+   this plain stylesheet's rule comes after Tailwind's generated
+   utilities in the compiled CSS, it silently won every time - so every
+   previous attempt to speed the ticker up by editing tailwind.config.js
+   had zero visible effect, no matter what value was set there. Removed
+   the duplicate animation declaration and its now-unused keyframes so
+   tailwind.config.js is the one place that controls the speed.
+*/
+.animate-scroll {
+  display: inline-flex;
+  gap: 0;
+}
+
+.animate-scroll:hover {
+  animation-play-state: paused;
+}
+
+/* Fade-in entrance */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
+
+/* Sidebar social follow buttons */
+.social-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: rgb(var(--muted));
+  color: rgb(var(--foreground));
+  transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.social-icon-btn:hover {
+  background: rgb(var(--primary));
+  color: rgb(var(--primary-foreground));
+  transform: translateY(-2px);
+}
+
+/* ============================================================
+   Accessibility — verified against ui-ux-pro-max pro-rules
+   ============================================================ */
+
+/* Editorial headline font on hero titles and article/card headings */
+.headline-serif {
+  font-family: var(--font-newsreader), Georgia, serif;
+}
+
+/* Visible keyboard focus on every custom interactive element (WCAG —
+   these are plain <a>/<button>/<div role> elements, not shadcn primitives,
+   so they don't inherit focus-visible styling automatically). */
+.apple-button:focus-visible,
+.apple-button-secondary:focus-visible,
+.social-icon-btn:focus-visible,
+.category-card:focus-visible,
+.list-item:focus-visible,
+.creative-section-header .see-all:focus-visible,
+.section-header .see-all:focus-visible {
+  outline: 2px solid rgb(var(--primary));
+  outline-offset: 2px;
+}
+
+/* Respect reduced-motion: stop the breaking-news marquee and flatten
+   hover/entrance transitions to instant state changes instead of removing
+   the motion query check entirely. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-scroll {
+    animation: none;
+    white-space: normal;
+  }
+
+  .animate-fade-in {
+    animation: none;
+  }
+
+  .apple-card,
+  .feature-card,
+  .category-card,
+  .list-item,
+  .image-zoom,
+  .social-icon-btn,
+  .apple-button,
+  .apple-button-secondary {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+
+  .apple-card:hover,
+  .feature-card:hover,
+  .category-card:hover {
+    transform: none;
+  }
+}
+
+/* Category Icon Wrapper */
+.category-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(4px);
+  transition: all 0.3s ease;
+}
+
+.dark .category-icon-wrapper {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.category-card:hover .category-icon-wrapper {
+  background: rgba(255, 255, 255, 0.8);
+  transform: scale(1.1) rotate(-6deg);
+}
+
+.dark .category-card:hover .category-icon-wrapper {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Social Share Icons */
+.social-share-icon {
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.social-share-icon:hover {
+  transform: translateY(-2px) scale(1.05);
+}
+
+/* Page Container - Consistent spacing from header */
+.page-container {
+  padding-top: 1.5rem;
+  padding-bottom: 2rem;
+}
+
+@media (min-width: 768px) {
+  .page-container {
+    padding-top: 2rem;
+    padding-bottom: 2.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .page-container {
+    padding-top: 2.5rem;
+    padding-bottom: 3rem;
+  }
+}
+
+/* Section spacing */
+.section-spacing {
+  margin-top: 2rem;
+}
+
+@media (min-width: 768px) {
+  .section-spacing {
+    margin-top: 2.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .section-spacing {
+    margin-top: 3rem;
+  }
+}
+
+/* Card spacing inside sections */
+.card-spacing {
+  margin-top: 1rem;
+}
+
+@media (min-width: 768px) {
+  .card-spacing {
+    margin-top: 1.25rem;
+  }
+}

@@ -1,0 +1,198 @@
+'use client';
+
+import { Suspense } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { StatsCards } from '@/components/admin/dashboard/stats-cards';
+import { RecentActivity } from '@/components/admin/dashboard/recent-activity';
+import { ContentCalendar } from '@/components/admin/dashboard/content-calendar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { 
+  FaPenFancy,
+  FaUpload,
+  FaUsers,
+  FaChartBar,
+  FaTags,
+  FaDollarSign,
+} from 'react-icons/fa';
+import { Shield, Calendar, Activity, CheckCircle, Clock, Eye } from 'lucide-react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+
+const currentUser = {
+  name: 'Admin User',
+  email: 'admin@lespageslibres.com',
+  role: 'Administrateur',
+  avatar: '',
+  lastLogin: new Date().toLocaleString(),
+};
+
+const stats = {
+  totalArticles: 156,
+  totalUsers: 234,
+  totalViews: 45231,
+  totalCategories: 8,
+  publishedToday: 5,
+  pendingReview: 3,
+  totalMedia: 89,
+  engagementRate: '12.4%',
+};
+
+const pendingReviews = [
+  { id: '1', title: 'L\'IA Révolutionne la Médecine', author: 'Dr. Sophie Martin', submitted: '2024-01-15', status: 'pending' },
+  { id: '2', title: 'Le Football Féminin Conquiert le Monde', author: 'Marc Dubois', submitted: '2024-01-14', status: 'pending' },
+  { id: '3', title: 'Les Nouvelles Tendances de la Mode Éthique', author: 'Julie Chen', submitted: '2024-01-13', status: 'pending' },
+];
+
+export default function AdminDashboard() {
+  return (
+    <div className="space-y-6">
+      {/* Welcome Section */}
+      <div className="rounded-xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border p-6">
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+          <Avatar className="h-16 w-16 ring-4 ring-primary/20">
+            <AvatarImage src={currentUser.avatar} />
+            <AvatarFallback className="bg-primary/10 text-primary text-xl font-bold">
+              {currentUser.name.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl font-bold">Bonjour, {currentUser.name} 👋</h1>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+                <Shield className="h-3.5 w-3.5" />
+                {currentUser.role}
+              </span>
+              <Badge variant="outline" className="gap-1">
+                <CheckCircle className="h-3 w-3 text-green-500" />
+                Full Access
+              </Badge>
+            </div>
+            <p className="mt-1 text-muted-foreground">
+              Gérez votre plateforme avec un accès complet à toutes les fonctionnalités.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Calendar className="h-4 w-4" />
+                Dernière connexion: {currentUser.lastLogin}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Activity className="h-4 w-4" />
+                Statut: <span className="text-green-600 font-medium">En ligne</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Suspense fallback={<StatsSkeleton />}>
+        <StatsCards />
+      </Suspense>
+
+      {/* Pending Reviews - Admin can review/relecture */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-yellow-500" />
+            Relecture en attente
+          </CardTitle>
+          <Button variant="outline" size="sm">Voir tout</Button>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Article</TableHead>
+                <TableHead>Auteur</TableHead>
+                <TableHead>Soumis</TableHead>
+                <TableHead>Statut</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {pendingReviews.map((article) => (
+                <TableRow key={article.id}>
+                  <TableCell className="font-medium">{article.title}</TableCell>
+                  <TableCell>{article.author}</TableCell>
+                  <TableCell>{article.submitted}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                      <Clock className="h-3 w-3 mr-1" />
+                      En attente
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="outline" className="h-8 gap-1">
+                        <Eye className="h-3 w-3" />
+                        Review
+                      </Button>
+                      <Button size="sm" variant="default" className="h-8 gap-1 bg-green-600 hover:bg-green-700">
+                        <CheckCircle className="h-3 w-3" />
+                        Approuver
+                      </Button>
+                      <Button size="sm" variant="destructive" className="h-8 gap-1">
+                        Rejeter
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Suspense fallback={<Skeleton className="h-[400px] col-span-2" />}>
+          <RecentActivity />
+        </Suspense>
+        <Suspense fallback={<Skeleton className="h-[400px]" />}>
+          <ContentCalendar />
+        </Suspense>
+      </div>
+
+      {/* Quick Actions - Admin Full Access */}
+      <div className="grid gap-4 md:grid-cols-6">
+        <QuickActionCard href="/admin/articles/new" title="Create Article" description="Write and publish new content" icon={<FaPenFancy className="h-6 w-6 text-primary" />} />
+        <QuickActionCard href="/admin/media" title="Upload Media" description="Add images, videos, and audio" icon={<FaUpload className="h-6 w-6 text-primary" />} />
+        <QuickActionCard href="/admin/users" title="Manage Users" description="Add or edit user accounts" icon={<FaUsers className="h-6 w-6 text-primary" />} />
+        <QuickActionCard href="/admin/categories" title="Categories" description="Manage content categories" icon={<FaTags className="h-6 w-6 text-primary" />} />
+        <QuickActionCard href="/admin/ads" title="Ads" description="Manage advertisements" icon={<FaDollarSign className="h-6 w-6 text-primary" />} />
+        <QuickActionCard href="/admin/analytics" title="Analytics" description="View performance metrics" icon={<FaChartBar className="h-6 w-6 text-primary" />} />
+      </div>
+    </div>
+  );
+}
+
+function QuickActionCard({ href, title, description, icon }: any) {
+  return (
+    <a href={href}>
+      <Card className="transition-all hover:shadow-lg hover:scale-105 cursor-pointer">
+        <CardContent className="p-4 text-center">
+          <div className="flex justify-center mb-2">{icon}</div>
+          <CardTitle className="text-sm font-medium">{title}</CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">{description}</p>
+        </CardContent>
+      </Card>
+    </a>
+  );
+}
+
+function StatsSkeleton() {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <Skeleton key={i} className="h-24 w-full" />
+      ))}
+    </div>
+  );
+}

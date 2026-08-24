@@ -1,0 +1,89 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+
+// Client-side data hook for the /admin/audit-log page - fetches from
+// /api/audit (admin-only route, see src/app/api/audit/route.ts). Was an
+// empty file.
+
+export interface AuditLogEntry {
+  id: string;
+  userId: string | null;
+  userName: string;
+  userEmail: string | null;
+  action: string;
+  entityType: string | null;
+  entityId: string | null;
+  details: Record<string, any> | null;
+  createdAt: string;
+}
+
+export interface AuditLogFilters {
+  page?: number;
+  limit?: number;
+  action?: string;
+  entityType?: string;
+  userIds?: string[];
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export function useAuditLog(filters: AuditLogFilters) {
+  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const {
+    page,
+    limit,
+    action,
+    entityType,
+    userIds,
+    search,
+    dateFrom,
+    dateTo,
+  } = filters;
+  // Stable string key for the effect/callback deps below - an array
+  // reference (even with the same contents) would otherwise re-trigger
+  // the fetch on every render.
+  const userIdsKey = (userIds || []).join(',');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (page) params.set('page', String(page));
+      if (limit) params.set('limit', String(limit));
+      if (action) params.set('action', action);
+      if (entityType) params.set('entityType', entityType);
+      if (userIdsKey) params.set('userIds', userIdsKey);
+      if (search) params.set('search', search);
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
+
+      const res = await fetch(`/api/audit?${params.toString()}`, { cache: 'no-store' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Impossible de charger le journal d’audit.');
+      }
+      const json = await res.json();
+      setLogs(json.logs || []);
+      setTotal(json.total || 0);
+      setTotalPages(json.totalPages || 0);
+    } catch (err: any) {
+      setError(err.message || 'Impossible de charger le journal d’audit.');
+    } finally {
+      setLoading(false);
+    }
+  }, [page, limit, action, entityType, userIdsKey, search, dateFrom, dateTo]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return { logs, total, totalPages, loading, error, refresh: load };
+}

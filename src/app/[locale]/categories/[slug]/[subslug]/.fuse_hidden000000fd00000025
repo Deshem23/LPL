@@ -1,0 +1,121 @@
+import { Suspense } from 'react';
+import { notFound } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
+import { Skeleton } from '@/components/ui/skeleton';
+import { getCategoriesWithSubcategories } from '@/lib/services/category-service';
+import { getArticlesByCategory, getArticles } from '@/lib/api/articles';
+import { getSiteSettings } from '@/lib/services/settings-service';
+import { CategoryClient } from '../category-client';
+
+// See the matching comment in ../page.tsx - without this, Next's default
+// fetch caching can keep serving a stale "Category Not Found" for a
+// subcategory that was created/fixed after this route was first visited.
+export const dynamic = 'force-dynamic';
+
+interface SubcategoryPageProps {
+  params: { locale: string; slug: string; subslug: string };
+  searchParams: { page?: string; search?: string; date?: string };
+}
+
+// Resolves the real, admin-managed category + subcategory pair by slug -
+// see the matching comment in ../page.tsx for why this no longer uses
+// the hardcoded lib/config/categories.ts.
+async function resolveCategoryAndSubcategory(slug: string, subslug: string) {
+  const categories = await getCategoriesWithSubcategories(false);
+  const dbCategory = categories.find((c) => c.slug === slug);
+  const dbSubcategory = dbCategory?.subcategories?.find((s) => s.slug === subslug);
+  if (!dbCategory || !dbSubcategory) return null;
+  return { category: dbCategory, subcategory: dbSubcategory };
+}
+
+export async function generateMetadata({
+  params: { locale, slug, subslug },
+}: {
+  params: { locale: string; slug: string; subslug: string };
+}) {
+  const resolved = await resolveCategoryAndSubcategory(slug, subslug);
+
+  if (!resolved) {
+    return {
+      title: 'Category Not Found',
+    };
+  }
+
+  const { category, subcategory } = resolved;
+
+  return {
+    title: `${subcategory.name} - ${category.name} - Les Pages Libres`,
+    description: `Dernières actualités et articles sur ${subcategory.name} dans ${category.name}`,
+  };
+}
+
+export default async function SubcategoryPage({
+  params: { locale, slug, subslug },
+  searchParams,
+}: SubcategoryPageProps) {
+  const resolved = await resolveCategoryAndSubcategory(slug, subslug);
+
+  if (!resolved) {
+    notFound();
+  }
+
+  const { category, subcategory } = resolved;
+
+  const page = parseInt(searchParams.page || '1');
+  const search = searchParams.search || '';
+  const date = searchParams.date || '';
+
+  // Page size comes from Settings > General > "Articles par page" - see
+  // the matching comment in ../page.tsx.
+  const { articles_per_page: articlesPerPage } = await getSiteSettings();
+
+  // Scoped to exactly this subcategory (resolved against the real
+  // categories table).
+  const { articles, total, totalPages } = await getArticlesByCategory({
+    locale,
+    categorySlug: slug,
+    subcategorySlug: subslug,
+    page,
+    limit: articlesPerPage || 11,
+    search: search || undefined,
+    date: date || undefined,
+  });
+
+  // Create a category object that includes the subcategory info for the
+  // header. subcategorySlug lets CategoryClient build search/filter/
+  // pagination URLs that stay on this subcategory instead of falling back
+  // to the parent category (see the matching comment in category-client.tsx).
+  const categoryWithSub = {
+    slug: category.slug,
+    label: `${category.name} - ${subcategory.name}`,
+    isSubcategory: true,
+    parentLabel: category.name,
+    subLabel: subcategory.name,
+    subcategorySlug: subcategory.slug,
+  };
+
+  // Site-wide latest articles for the sidebar's Trending/Latest widgets -
+  // same call the homepage makes - see the comment in the parent category
+  // page.tsx for why this is fetched separately from `articles`.
+  let sidebarArticles = articles;
+  try {
+    const sitewide = await getArticles({ locale, limit: 20 });
+    sidebarArticles = sitewide.articles;
+  } catch (error) {
+    console.error('Error fetching site-wide sidebar articles:', error);
+  }
+
+  return (
+    <CategoryClient
+      locale={locale}
+      category={categoryWithSub}
+      articles={articles}
+      sidebarArticles={sidebarArticles}
+      total={total}
+      totalPages={totalPages}
+      currentPage={page}
+      search={search}
+      date={date}
+    />
+  );
+}

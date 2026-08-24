@@ -1,0 +1,64 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { getCurrentUser } from '@/lib/auth/actions';
+import { Loader2 } from 'lucide-react';
+
+interface AuthGuardProps {
+  children: React.ReactNode;
+  allowedRoles?: string[];
+}
+
+export function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const user = await getCurrentUser();
+        
+        if (!user) {
+          router.push('/login');
+          return;
+        }
+
+        if (allowedRoles && allowedRoles.length > 0) {
+          const userRole = user.user_metadata?.role || 'contributor';
+          if (!allowedRoles.includes(userRole)) {
+            router.push('/unauthorized');
+            return;
+          }
+        }
+
+        setIsAuthorized(true);
+      } catch (error) {
+        console.error('Auth check error:', error);
+        router.push('/login');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, [router, allowedRoles]);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Verifying authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthorized) {
+    return null;
+  }
+
+  return <>{children}</>;
+}

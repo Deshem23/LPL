@@ -1,0 +1,130 @@
+import { cache } from 'react';
+import { createAdminClient } from '@/lib/supabase/admin';
+
+// Backs the single-row `site_settings` table (migrations/10_create_site_settings.sql).
+// NOTE ON SCOPE: this makes the Settings page's values real and persisted
+// instead of local-only React state. The security-policy fields
+// (session_timeout, password_min_length, require_*, max_login_attempts,
+// two_factor_enabled) and the email fields (smtp_*) are stored correctly,
+// but nothing else in the app currently reads and enforces them yet -
+// there's no session-timeout middleware, no password-policy validator on
+// signup/reset, no 2FA flow, and no outbound mail sender wired to smtp_*.
+// Wiring those up is a separate, larger piece of work; this service only
+// guarantees the admin's chosen values are saved and reloaded correctly.
+
+export interface SiteSettings {
+  id: number;
+  site_name: string;
+  site_description: string | null;
+  site_url: string | null;
+  default_language: string;
+  timezone: string;
+  articles_per_page: number;
+  comments_enabled: boolean;
+  registration_enabled: boolean;
+  meta_title: string | null;
+  meta_description: string | null;
+  meta_keywords: string | null;
+  robots_txt: string | null;
+  sitemap_enabled: boolean;
+  smtp_host: string | null;
+  smtp_port: string | null;
+  smtp_user: string | null;
+  smtp_password: string | null;
+  from_email: string | null;
+  from_name: string | null;
+  enable_notifications: boolean;
+  session_timeout: number;
+  max_login_attempts: number;
+  password_min_length: number;
+  require_special_chars: boolean;
+  require_numbers: boolean;
+  require_uppercase: boolean;
+  two_factor_enabled: boolean;
+  backup_enabled: boolean;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+const DEFAULTS: Omit<SiteSettings, 'id' | 'updated_at' | 'updated_by'> = {
+  site_name: 'Les Pages Libres',
+  site_description: '',
+  site_url: '',
+  default_language: 'fr',
+  timezone: 'Europe/Paris',
+  articles_per_page: 12,
+  comments_enabled: true,
+  registration_enabled: true,
+  meta_title: '',
+  meta_description: '',
+  meta_keywords: '',
+  robots_txt: '',
+  sitemap_enabled: true,
+  smtp_host: '',
+  smtp_port: '',
+  smtp_user: '',
+  smtp_password: '',
+  from_email: '',
+  from_name: '',
+  enable_notifications: true,
+  session_timeout: 120,
+  max_login_attempts: 5,
+  password_min_length: 8,
+  require_special_chars: true,
+  require_numbers: true,
+  require_uppercase: true,
+  two_factor_enabled: false,
+  backup_enabled: false,
+};
+
+// Wrapped in React's cache() - within a single request, this was being
+// called twice on every category/subcategory page view (once by the root
+// layout's generateMetadata(), once again by the page itself for
+// articles_per_page - see [locale]/categories/[slug]/page.tsx) and, since
+// generateMetadata() runs on literally every request site-wide, at least
+// once on every single page view regardless of route. cache() dedupes
+// calls with the same arguments (none, here) to a single underlying query
+// per request - repeat calls within that same render just reuse the
+// already-resolved result instead of hitting the DB again. This only
+// dedupes within one request; the next request always reads fresh.
+export const getSiteSettings = cache(async (): Promise<SiteSettings> => {
+  const supabase = createAdminClient();
+
+  const { data, error } = await supabase.from('site_settings').select('*').eq('id', 1).single();
+
+  if (error || !data) {
+    // Table not migrated yet, or the singleton row is somehow missing -
+    // fall back to defaults rather than breaking the settings page.
+    console.error('Error fetching site settings:', error);
+    return { id: 1, updated_at: new Date().toISOString(), updated_by: null, ...DEFAULTS };
+  }
+
+  return data as SiteSettings;
+});
+
+export async function updateSiteSettings(
+  fields: Partial<Omit<SiteSettings, 'id' | 'updated_at'>>,
+  updatedBy?: string
+): Promise<{ success: boolean; error?: string; settings?: SiteSettings }> {
+  const supabase = createAdminClient();
+
+  const row = {
+    ...fields,
+    updated_at: new Date().toISOString(),
+    ...(updatedBy ? { updated_by: updatedBy } : {}),
+  };
+
+  const { data, error } = await supabase
+    .from('site_settings')
+    .update(row)
+    .eq('id', 1)
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Error updating site settings:', error);
+    return { success: false, error: error.message };
+  }
+
+  return { success: true, settings: data as SiteSettings };
+}

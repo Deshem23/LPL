@@ -1,0 +1,358 @@
+'use client';
+
+import { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Calendar, Search, X, ChevronLeft, ChevronRight, Newspaper } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Sidebar } from '@/components/shared/sidebar';
+import { EmptyState } from '@/components/shared/empty-state';
+import { Category } from '@/lib/config/categories';
+
+interface CategoryClientProps {
+  locale: string;
+  // subcategorySlug is only present when this is rendered from
+  // [slug]/[subslug]/page.tsx - see the comment on `basePath` below for
+  // why it's needed.
+  category: Category & { subcategorySlug?: string };
+  articles: any[];
+  total: number;
+  totalPages: number;
+  currentPage: number;
+  search: string;
+  date: string;
+  /** Site-wide latest articles (same dataset the homepage sidebar uses)
+   *  for the Sidebar's "Tendances"/"Dernières actualités" widgets - kept
+   *  separate from `articles` (which is scoped to this category/
+   *  subcategory) so those widgets show the same thing as the homepage
+   *  instead of only-this-category content. Falls back to `articles` if
+   *  not provided. */
+  sidebarArticles?: any[];
+}
+
+export function CategoryClient({
+  locale,
+  category,
+  articles,
+  total,
+  totalPages,
+  currentPage,
+  search: initialSearch,
+  date: initialDate,
+  sidebarArticles,
+}: CategoryClientProps) {
+  const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
+  const [selectedDate, setSelectedDate] = useState(initialDate);
+
+  // On a subcategory page, `category.slug` is still the PARENT's slug
+  // (see the SubcategoryPageProps shape in [subslug]/page.tsx, which only
+  // has a `subLabel`/`parentLabel`, no separate subcategory slug field) -
+  // every router.push below used to build its URL from category.slug
+  // alone, which silently dropped back to the parent category and lost
+  // the subcategory scope the moment you searched, filtered by date, or
+  // paginated on a subcategory page. `subcategorySlug` (passed only by
+  // the subcategory page) fixes the base path to stay on the same
+  // subcategory.
+  const basePath = category.subcategorySlug
+    ? `/${locale}/categories/${category.slug}/${category.subcategorySlug}`
+    : `/${locale}/categories/${category.slug}`;
+
+  // Site-wide search - was previously scoped to this category/subcategory
+  // only (via basePath), which meant a subcategory with few or no articles
+  // made the search box look broken ("Category Not Found"-adjacent dead
+  // end) even when the term existed elsewhere on the site. Routes to the
+  // real sitewide /search page instead (see app/[locale]/search/page.tsx),
+  // same as the header's own search bar. The in-category date filter is
+  // unaffected - it still filters this category's own listing below.
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    const params = new URLSearchParams();
+    params.set('q', searchQuery.trim());
+    router.push(`/${locale}/search?${params.toString()}`);
+  };
+
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSelectedDate(e.target.value);
+    const params = new URLSearchParams();
+    if (searchQuery) params.set('search', searchQuery);
+    if (e.target.value) params.set('date', e.target.value);
+    router.push(`${basePath}?${params.toString()}`);
+  };
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedDate('');
+    router.push(basePath);
+  };
+
+  const goToPage = (page: number) => {
+    const params = new URLSearchParams();
+    if (searchQuery) params.set('search', searchQuery);
+    if (selectedDate) params.set('date', selectedDate);
+    params.set('page', page.toString());
+    router.push(`${basePath}?${params.toString()}`);
+  };
+
+  return (
+    <div className="container mx-auto px-4 page-container">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+        {/* Main Content - 8 columns */}
+        <div className="lg:col-span-8">
+          {/* Category Header with Line */}
+          <div className="mb-8">
+            <h1 className="text-3xl md:text-4xl font-bold">{category.label}</h1>
+            <div className="h-px w-full bg-gradient-to-r from-primary/30 to-transparent mt-2 mb-3" />
+            <p className="text-sm text-muted-foreground">
+              {total} article{total > 1 ? 's' : ''} trouvé{total > 1 ? 's' : ''} dans cette catégorie
+            </p>
+            {category.subcategories && category.subcategories.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {category.subcategories.map((sub) => (
+                  // Plain <a>, not next/link's <Link> - see the matching
+                  // comment in category-card.tsx / layout/header.tsx for why.
+                  <a
+                    key={sub.slug}
+                    href={`/${locale}/categories/${category.slug}/${sub.slug}`}
+                    className="px-4 py-1.5 text-sm rounded-full bg-muted hover:bg-primary/10 hover:text-primary transition-colors"
+                  >
+                    {sub.label}
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center">
+            <form onSubmit={handleSearch} className="flex flex-1 gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Rechercher sur tout le site..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Button type="submit">Rechercher</Button>
+            </form>
+
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <Input
+                  type="date"
+                  value={selectedDate}
+                  onChange={handleDateChange}
+                  className="pl-10 w-[180px]"
+                />
+              </div>
+              {(searchQuery || selectedDate) && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={clearFilters}
+                  className="h-10 w-10"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {articles.length > 0 ? (
+            <div className="space-y-4">
+              {articles.map((article) => (
+                <RectangularArticleCard
+                  key={article.id}
+                  article={article}
+                  locale={locale}
+                />
+              ))}
+            </div>
+          ) : searchQuery || selectedDate ? (
+            <EmptyState
+              icon={Search}
+              title="Aucun résultat"
+              description="Aucun article ne correspond à vos critères de recherche dans cette catégorie."
+              action={{ label: 'Effacer les filtres', onClick: clearFilters }}
+            />
+          ) : (
+            <EmptyState
+              icon={Newspaper}
+              title="Aucun article pour le moment"
+              description={`Il n'y a pas encore d'article publié dans ${category.label}. Revenez bientôt !`}
+              action={{ label: "Retour à l'accueil", href: `/${locale}` }}
+            />
+          )}
+
+          {/* Pagination - 11 articles per page */}
+          {totalPages > 1 && (
+            <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-t pt-6">
+              <p className="text-sm text-muted-foreground text-center sm:text-left">
+                Page {currentPage} sur {totalPages} ({total} articles au total)
+              </p>
+              <div className="flex items-center justify-center gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage <= 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Précédent
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? 'default' : 'outline'}
+                        size="sm"
+                        className="h-9 w-9"
+                        onClick={() => goToPage(pageNum)}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                  {totalPages > 5 && currentPage < totalPages - 2 && (
+                    <>
+                      <span className="px-1 text-muted-foreground">…</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 w-9"
+                        onClick={() => goToPage(totalPages)}
+                      >
+                        {totalPages}
+                      </Button>
+                    </>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage >= totalPages}
+                >
+                  Suivant
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="lg:col-span-4">
+          {/* Same widget set (and order) as the homepage sidebar - only
+              currentCategory differs, so this category is highlighted
+              in the Categories list. Trending/Latest use the site-wide
+              sidebarArticles (same as home), not the category-scoped
+              `articles` used for the main article list below. */}
+          <Sidebar
+            locale={locale}
+            articles={sidebarArticles ?? articles}
+            variant="default"
+            showCategories={true}
+            showNewsletter={true}
+            showSearch={true}
+            showLatestNews={true}
+            showPinned={false}
+            showAds={true}
+            showSocialShare={true}
+            showTrending={true}
+            currentCategory={category.slug}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Rectangular Article Card Component
+function RectangularArticleCard({ article, locale }: { article: any; locale: string }) {
+  const formattedDate = new Date(article.createdAt).toLocaleDateString(locale || 'fr', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+
+  return (
+    <Link href={`/${locale}/articles/${article.slug}`} className="block group">
+      <div className="flex flex-col md:flex-row gap-4 p-4 rounded-xl border bg-card hover:shadow-md transition-all hover:border-primary/20">
+        <div className="relative md:w-48 h-40 md:h-auto flex-shrink-0 overflow-hidden rounded-lg bg-muted">
+          {article.coverImage ? (
+            <img
+              src={article.coverImage}
+              alt={article.title}
+              className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+            />
+          ) : (
+            <div className="h-full w-full bg-gradient-to-br from-primary/20 to-primary/5" />
+          )}
+          {article.category && (
+            <span className="absolute top-2 left-2 px-2 py-0.5 bg-black/60 backdrop-blur-sm text-white text-xs rounded-full">
+              {article.category.name}
+            </span>
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{article.author.name}</span>
+            <span>•</span>
+            <span>{formattedDate}</span>
+            {article.readTime && (
+              <>
+                <span>•</span>
+                <span>{article.readTime}</span>
+              </>
+            )}
+          </div>
+          <h3 className="mt-2 text-lg font-semibold group-hover:text-primary transition-colors line-clamp-2">
+            {article.title}
+          </h3>
+          <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
+            {article.excerpt}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              👁️ {article.views || 0}
+            </span>
+            {article.tags && article.tags.length > 0 && (
+              <div className="flex items-center gap-1">
+                <span>🏷️</span>
+                {article.tags.slice(0, 2).map((tag: string) => (
+                  <span key={tag} className="text-muted-foreground">
+                    #{tag}
+                  </span>
+                ))}
+                {article.tags.length > 2 && (
+                  <span className="text-muted-foreground">+{article.tags.length - 2}</span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="hidden md:flex items-center justify-center pl-4 border-l">
+          <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+        </div>
+      </div>
+    </Link>
+  );
+}

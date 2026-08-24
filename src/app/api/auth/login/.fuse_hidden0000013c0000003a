@@ -1,0 +1,108 @@
+import { createClient } from '@/lib/supabase/server';
+import { NextResponse } from 'next/server';
+import { logAction } from '@/lib/services/audit-service';
+
+// Always fetch fresh from the DB - a GET route handler with no
+// request-derived dynamic behavior is otherwise eligible for Next's
+// static Route Handler caching, which is what caused this endpoint to
+// serve a stale snapshot until a full rebuild/refresh.
+export const dynamic = 'force-dynamic';
+
+
+export async function POST(request: Request) {
+  try {
+    let body;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError);
+      return NextResponse.json(
+        { error: 'Invalid JSON format. Please send a valid JSON body.' },
+        { status: 400 }
+      );
+    }
+
+    const { email, password } = body;
+
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: 'Email and password are required' },
+        { status: 400 }
+      );
+    }
+
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 401 }
+      );
+    }
+
+    // Get role from database (not metadata)
+    const { data: profile, error: profileError } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', data.user.id)
+      .single();
+
+    let role = 'contributor';
+    
+    if (profileError) {
+      console.error('❌ Error fetching profile:', profileError);
+      // Fallback to metadata
+      role = data.user?.user_metadata?.role || 'contributor';
+    } else {
+      role = profile?.role || 'contributor';
+      // Sync role to auth metadata if different
+      if (role !== data.user?.user_metadata?.role) {
+        console.log(`🔄 Syncing role: ${role} for user ${data.user.id}`);
+        const { error: updateError } = await supabase.auth.updateUser({
+          data: { role: role }
+        });
+        if (updateError) {
+          console.error('❌ Error syncing role:', updateError);
+        } else {
+          console.log(`✅ Role synced: ${role}`);
+        }
+      }
+    }
+
+    const redirectMap: Record<string, string> = {
+      admin: '/admin',
+      editor: '/admin/editor',
+      writer: '/admin/writer',
+      contributor: '/admin/contributor',
+    };
+
+    const redirectTo = redirectMap[role] || '/admin';
+
+    // Fire-and-forget - logAction() swallows its own errors, so a
+    // logging hiccup can never block or fail a successful login.
+    logAction({
+      userId: data.user.id,
+      action: 'auth.login',
+      entityType: 'user',
+      entityId: data.user.id,
+      details: { email, role },
+    });
+
+    return NextResponse.json({
+      user: data.user,
+      role: role,
+      redirectTo: redirectTo,
+      message: `Welcome ${role}!`,
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

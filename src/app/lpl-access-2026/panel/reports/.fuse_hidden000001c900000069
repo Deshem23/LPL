@@ -1,0 +1,594 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { Clock, FileText, Users, Activity, LayoutGrid, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { EmptyState } from '@/components/shared/empty-state';
+import { ExportButtons } from '@/components/shared/export-buttons';
+import { UserMultiSelect, type SelectableUser } from '@/components/shared/user-multi-select';
+import { useAuditLog } from '@/hooks/use-audit-log';
+import type { ExportColumn } from '@/lib/export-utils';
+
+interface StatusBreakdownRow {
+  status: string;
+  label: string;
+  count: number;
+}
+
+interface AuthorReportRow {
+  authorId: string;
+  authorName: string;
+  published: number;
+  draft: number;
+  scheduled: number;
+  review: number;
+  archived: number;
+  totalViews: number;
+}
+
+interface UpcomingScheduledArticle {
+  id: string;
+  title: string;
+  slug: string;
+  scheduledPublishAt: string;
+  authorName: string;
+}
+
+interface ReportsData {
+  statusBreakdown: StatusBreakdownRow[];
+  authorReport: AuthorReportRow[];
+  upcomingScheduled: UpcomingScheduledArticle[];
+}
+
+const STATUS_BADGE_VARIANT: Record<string, 'default' | 'secondary' | 'outline' | 'success' | 'warning' | 'info'> = {
+  published: 'success',
+  scheduled: 'info',
+  review: 'warning',
+  draft: 'secondary',
+  archived: 'outline',
+};
+
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+const AUTHOR_REPORT_COLUMNS: ExportColumn[] = [
+  { key: 'authorName', label: 'Auteur' },
+  { key: 'published', label: 'Publiés' },
+  { key: 'draft', label: 'Brouillons' },
+  { key: 'scheduled', label: 'Programmés' },
+  { key: 'review', label: 'En révision' },
+  { key: 'archived', label: 'Archivés' },
+  { key: 'totalViews', label: 'Vues totales' },
+];
+
+const ACTIVITY_COLUMNS: ExportColumn[] = [
+  { key: 'when', label: 'Quand' },
+  { key: 'userName', label: 'Utilisateur' },
+  { key: 'userEmail', label: 'Email' },
+  { key: 'action', label: 'Action' },
+  { key: 'entityType', label: 'Type' },
+  { key: 'details', label: 'Détails' },
+];
+
+const SCHEDULED_COLUMNS: ExportColumn[] = [
+  { key: 'title', label: 'Article' },
+  { key: 'authorName', label: 'Auteur' },
+  { key: 'scheduledPublishAt', label: 'Publication prévue' },
+];
+
+const STATUS_COLUMNS: ExportColumn[] = [
+  { key: 'label', label: 'Statut' },
+  { key: 'count', label: 'Nombre' },
+  { key: 'percent', label: '% du total' },
+];
+
+const ACTIVITY_ACTION_OPTIONS = [
+  { value: 'all', label: 'Tous les événements' },
+  { value: 'auth', label: 'Connexions / déconnexions' },
+  { value: 'article', label: 'Articles' },
+  { value: 'category', label: 'Catégories' },
+  { value: 'user', label: 'Utilisateurs' },
+];
+
+type ReportType = 'overview' | 'content' | 'activity' | 'scheduled';
+
+// The reports hub was previously one dashboard with a single "Exporter"
+// button buried in one card - this reframes it as an actual report
+// generator: pick what kind of report (content production, user
+// activity/audit trail, upcoming publications, or a sitewide overview),
+// optionally scope it to one or several specific users, and export
+// exactly that. "Different kinds of report per platform event" maps to
+// the report-type tabs below - each is backed by a distinct kind of
+// platform event (content status changes, login/logout/CRUD actions,
+// scheduled publishing).
+export default function AdminReportsPage() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<ReportsData | null>(null);
+  const [users, setUsers] = useState<SelectableUser[]>([]);
+  const [reportType, setReportType] = useState<ReportType>('overview');
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+
+  // Activity report's own filters - it also supports a date range and an
+  // event-type filter (the audit trail's own dimension of "what kind of
+  // event"), on top of the shared user selection above.
+  const [activityAction, setActivityAction] = useState('all');
+  const [activityDateFrom, setActivityDateFrom] = useState('');
+  const [activityDateTo, setActivityDateTo] = useState('');
+  const [activityPage, setActivityPage] = useState(1);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch('/api/admin/reports', { cache: 'no-store' });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || 'Impossible de charger les rapports.');
+        }
+        const json = await res.json();
+        if (!cancelled) setData(json);
+      } catch (err: any) {
+        if (!cancelled) setError(err.message || 'Impossible de charger les rapports.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Full user list, for the "one user or several users at once" filter -
+  // shared across the content and activity report types.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/users', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return;
+        setUsers((json.users || []).map((u: any) => ({ id: u.id, name: u.name, email: u.email })));
+      })
+      .catch(() => {
+        if (!cancelled) setUsers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const {
+    logs: activityLogs,
+    total: activityTotal,
+    totalPages: activityTotalPages,
+    loading: activityLoading,
+    error: activityError,
+  } = useAuditLog({
+    page: activityPage,
+    limit: 30,
+    action: activityAction !== 'all' ? activityAction : undefined,
+    dateFrom: activityDateFrom || undefined,
+    dateTo: activityDateTo || undefined,
+    userIds: selectedUserIds.length > 0 ? selectedUserIds : undefined,
+  });
+
+  const filteredAuthorReport = useMemo(() => {
+    if (!data) return [];
+    if (selectedUserIds.length === 0) return data.authorReport;
+    return data.authorReport.filter((row) => selectedUserIds.includes(row.authorId));
+  }, [data, selectedUserIds]);
+
+  const scopeLabel =
+    selectedUserIds.length === 1
+      ? users.find((u) => u.id === selectedUserIds[0])?.name || '1 utilisateur'
+      : selectedUserIds.length > 1
+      ? `${selectedUserIds.length} utilisateurs`
+      : null;
+
+  const activityExportRows = activityLogs.map((log) => ({
+    when: new Date(log.createdAt).toLocaleString('fr-FR'),
+    userName: log.userName,
+    userEmail: log.userEmail || '',
+    action: log.action,
+    entityType: log.entityType || '',
+    details: log.details ? Object.entries(log.details).map(([k, v]) => `${k}: ${v}`).join(', ') : '',
+  }));
+
+  const scheduledExportRows = (data?.upcomingScheduled || []).map((a) => ({
+    title: a.title,
+    authorName: a.authorName,
+    scheduledPublishAt: formatDateTime(a.scheduledPublishAt),
+  }));
+
+  const totalArticlesForStatus = data?.statusBreakdown.reduce((sum, s) => sum + s.count, 0) || 0;
+  const statusExportRows = (data?.statusBreakdown || []).map((s) => ({
+    label: s.label,
+    count: s.count,
+    percent: totalArticlesForStatus > 0 ? `${Math.round((s.count / totalArticlesForStatus) * 100)}%` : '0%',
+  }));
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="mt-2 h-4 w-64" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-24" />
+          ))}
+        </div>
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return <p className="text-sm text-destructive">{error || 'Aucune donnée disponible.'}</p>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight">Rapports</h2>
+        <p className="text-muted-foreground">
+          Générez un rapport selon ce qui s'est passé sur la plateforme : production de contenu,
+          activité des utilisateurs (connexions, actions) ou publications à venir - pour tout le
+          monde, ou pour un ou plusieurs utilisateurs en particulier.
+        </p>
+      </div>
+
+      <Tabs value={reportType} onValueChange={(v) => setReportType(v as ReportType)}>
+        <TabsList className="flex h-auto flex-wrap gap-1 sm:inline-flex">
+          <TabsTrigger value="overview" className="gap-1.5">
+            <LayoutGrid className="h-3.5 w-3.5" />
+            Vue d'ensemble
+          </TabsTrigger>
+          <TabsTrigger value="content" className="gap-1.5">
+            <FileText className="h-3.5 w-3.5" />
+            Production de contenu
+          </TabsTrigger>
+          <TabsTrigger value="activity" className="gap-1.5">
+            <Activity className="h-3.5 w-3.5" />
+            Activité des utilisateurs
+          </TabsTrigger>
+          <TabsTrigger value="scheduled" className="gap-1.5">
+            <Clock className="h-3.5 w-3.5" />
+            Publications programmées
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Overview - sitewide, no per-user scoping */}
+        <TabsContent value="overview" className="space-y-6">
+          <Card>
+            <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle>Répartition par statut</CardTitle>
+              <ExportButtons
+                title="Rapport - Vue d'ensemble"
+                filename={`rapport-vue-ensemble-${new Date().toISOString().slice(0, 10)}`}
+                columns={STATUS_COLUMNS}
+                rows={statusExportRows}
+              />
+            </CardHeader>
+            <CardContent>
+              {data.statusBreakdown.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucun article pour le moment.</p>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                  {data.statusBreakdown.map((s) => (
+                    <div key={s.status} className="rounded-lg border p-4">
+                      <div className="flex items-center justify-between">
+                        <Badge variant={STATUS_BADGE_VARIANT[s.status] || 'secondary'}>{s.label}</Badge>
+                      </div>
+                      <p className="mt-3 text-2xl font-bold">{s.count}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {totalArticlesForStatus > 0 ? Math.round((s.count / totalArticlesForStatus) * 100) : 0}% du total
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Users className="h-4 w-4" /> Auteurs actifs
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">{data.authorReport.length}</p>
+                <p className="text-xs text-muted-foreground">ont au moins un article sur la plateforme</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Clock className="h-4 w-4" /> Publications à venir
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">{data.upcomingScheduled.length}</p>
+                <p className="text-xs text-muted-foreground">articles programmés en attente</p>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Content production - filterable to one or several authors */}
+        <TabsContent value="content" className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle>Production par auteur</CardTitle>
+                {scopeLabel && <p className="mt-1 text-xs text-muted-foreground">Filtré sur : {scopeLabel}</p>}
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <UserMultiSelect
+                  users={users}
+                  selectedIds={selectedUserIds}
+                  onChange={setSelectedUserIds}
+                  triggerClassName="sm:w-[220px]"
+                />
+                <ExportButtons
+                  title={scopeLabel ? `Rapport de production — ${scopeLabel}` : 'Rapport de production par auteur'}
+                  filename={`rapport-auteurs-${new Date().toISOString().slice(0, 10)}`}
+                  columns={AUTHOR_REPORT_COLUMNS}
+                  rows={filteredAuthorReport}
+                />
+              </div>
+            </CardHeader>
+            <CardContent>
+              {filteredAuthorReport.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {selectedUserIds.length > 0
+                    ? "Aucun article pour l'utilisateur sélectionné."
+                    : 'Aucun article pour le moment.'}
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-left text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">Auteur</th>
+                        <th className="px-3 py-2 font-medium">Publiés</th>
+                        <th className="px-3 py-2 font-medium">Brouillons</th>
+                        <th className="px-3 py-2 font-medium">Programmés</th>
+                        <th className="px-3 py-2 font-medium">En révision</th>
+                        <th className="px-3 py-2 font-medium">Archivés</th>
+                        <th className="px-3 py-2 font-medium">Vues totales</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {filteredAuthorReport.map((row) => (
+                        <tr key={row.authorId} className="hover:bg-muted/30">
+                          <td className="px-3 py-2 font-medium">{row.authorName}</td>
+                          <td className="px-3 py-2">{row.published}</td>
+                          <td className="px-3 py-2">{row.draft}</td>
+                          <td className="px-3 py-2">{row.scheduled}</td>
+                          <td className="px-3 py-2">{row.review}</td>
+                          <td className="px-3 py-2">{row.archived}</td>
+                          <td className="px-3 py-2">{row.totalViews.toLocaleString('fr-FR')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* User activity / audit trail - the "different kinds of report
+            according to platform events" dimension: filter by event type
+            (logins/logouts, article/category/user changes), date range,
+            and one or several users, then export. */}
+        <TabsContent value="activity" className="space-y-4">
+          <Card>
+            <CardHeader className="space-y-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle>Activité des utilisateurs</CardTitle>
+                  {scopeLabel && <p className="mt-1 text-xs text-muted-foreground">Filtré sur : {scopeLabel}</p>}
+                </div>
+                <ExportButtons
+                  title={scopeLabel ? `Rapport d'activité — ${scopeLabel}` : "Rapport d'activité des utilisateurs"}
+                  filename={`rapport-activite-${new Date().toISOString().slice(0, 10)}`}
+                  columns={ACTIVITY_COLUMNS}
+                  rows={activityExportRows}
+                />
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                <UserMultiSelect
+                  users={users}
+                  selectedIds={selectedUserIds}
+                  onChange={(ids) => {
+                    setSelectedUserIds(ids);
+                    setActivityPage(1);
+                  }}
+                  triggerClassName="sm:w-[200px]"
+                />
+                <Select
+                  value={activityAction}
+                  onValueChange={(v) => {
+                    setActivityAction(v);
+                    setActivityPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-full sm:w-[220px]">
+                    <SelectValue placeholder="Type d'événement" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ACTIVITY_ACTION_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="date"
+                  value={activityDateFrom}
+                  onChange={(e) => {
+                    setActivityDateFrom(e.target.value);
+                    setActivityPage(1);
+                  }}
+                  className="w-full sm:w-[160px]"
+                  aria-label="Du"
+                />
+                <Input
+                  type="date"
+                  value={activityDateTo}
+                  onChange={(e) => {
+                    setActivityDateTo(e.target.value);
+                    setActivityPage(1);
+                  }}
+                  className="w-full sm:w-[160px]"
+                  aria-label="Au"
+                />
+              </div>
+            </CardHeader>
+            <CardContent>
+              {activityError ? (
+                <p className="text-sm text-destructive">{activityError}</p>
+              ) : activityLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3, 4].map((i) => (
+                    <Skeleton key={i} className="h-10 w-full" />
+                  ))}
+                </div>
+              ) : activityLogs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucun événement pour ces filtres.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-left text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">Quand</th>
+                        <th className="px-3 py-2 font-medium">Utilisateur</th>
+                        <th className="px-3 py-2 font-medium">Action</th>
+                        <th className="px-3 py-2 font-medium">Type</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {activityLogs.map((log) => (
+                        <tr key={log.id} className="hover:bg-muted/30">
+                          <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
+                            {new Date(log.createdAt).toLocaleString('fr-FR')}
+                          </td>
+                          <td className="px-3 py-2 font-medium">{log.userName}</td>
+                          <td className="px-3 py-2">
+                            <Badge variant="outline">{log.action}</Badge>
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">{log.entityType || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {activityTotalPages > 1 && (
+                <div className="mt-4 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-center text-sm text-muted-foreground sm:text-left">
+                    Page {activityPage} sur {activityTotalPages} ({activityTotal} événements au total)
+                  </p>
+                  <div className="flex items-center justify-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActivityPage((p) => Math.max(1, p - 1))}
+                      disabled={activityPage <= 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Précédent
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActivityPage((p) => Math.min(activityTotalPages, p + 1))}
+                      disabled={activityPage >= activityTotalPages}
+                    >
+                      Suivant
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Upcoming scheduled publishes, as its own report */}
+        <TabsContent value="scheduled" className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle>Publications programmées à venir</CardTitle>
+              <ExportButtons
+                title="Rapport - Publications programmées"
+                filename={`rapport-programmations-${new Date().toISOString().slice(0, 10)}`}
+                columns={SCHEDULED_COLUMNS}
+                rows={scheduledExportRows}
+                disabled={scheduledExportRows.length === 0}
+              />
+            </CardHeader>
+            <CardContent>
+              {data.upcomingScheduled.length === 0 ? (
+                <EmptyState
+                  icon={Clock}
+                  title="Rien de programmé"
+                  description="Aucun article n'est actuellement en attente d'une publication programmée."
+                />
+              ) : (
+                <div className="space-y-3">
+                  {data.upcomingScheduled.map((article) => (
+                    <div
+                      key={article.id}
+                      className="flex items-center justify-between gap-4 rounded-lg border p-3"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <FileText className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{article.title}</p>
+                          <p className="text-xs text-muted-foreground">{article.authorName}</p>
+                        </div>
+                      </div>
+                      <Badge variant="info" className="flex-shrink-0 gap-1">
+                        <Clock className="h-3 w-3" />
+                        {formatDateTime(article.scheduledPublishAt)}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

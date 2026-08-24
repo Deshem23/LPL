@@ -1,0 +1,53 @@
+'use client';
+
+import { useState } from 'react';
+import { FileSpreadsheet, FileText, Printer } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { getLogoDataUrl, exportToExcel, exportToWord, exportToPdf, type ExportColumn } from '@/lib/export-utils';
+
+interface ExportButtonsProps {
+  /** Shown as the document title/heading in every exported format. */
+  title: string;
+  /** Base filename, without extension - each format appends its own. */
+  filename: string;
+  columns: ExportColumn[];
+  rows: Record<string, any>[];
+  disabled?: boolean;
+}
+
+// Reusable "Exporter" button group - Excel / Word / PDF, all generated
+// client-side with no new dependency (see lib/export-utils.ts for how).
+// Used on both /admin/reports and /admin/audit-log.
+export function ExportButtons({ title, filename, columns, rows, disabled }: ExportButtonsProps) {
+  const [exporting, setExporting] = useState<'excel' | 'word' | 'pdf' | null>(null);
+  const isDisabled = disabled || rows.length === 0 || exporting !== null;
+
+  const runExport = async (kind: 'excel' | 'word' | 'pdf') => {
+    setExporting(kind);
+    try {
+      const logo = await getLogoDataUrl();
+      if (kind === 'excel') exportToExcel(filename, title, columns, rows);
+      else if (kind === 'word') exportToWord(filename, title, columns, rows, logo);
+      else exportToPdf(title, columns, rows, logo);
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button variant="outline" size="sm" disabled={isDisabled} onClick={() => runExport('excel')}>
+        <FileSpreadsheet className="mr-2 h-4 w-4" />
+        Excel
+      </Button>
+      <Button variant="outline" size="sm" disabled={isDisabled} onClick={() => runExport('word')}>
+        <FileText className="mr-2 h-4 w-4" />
+        Word
+      </Button>
+      <Button variant="outline" size="sm" disabled={isDisabled} onClick={() => runExport('pdf')}>
+        <Printer className="mr-2 h-4 w-4" />
+        PDF
+      </Button>
+    </div>
+  );
+}

@@ -1,0 +1,22 @@
+import { getTranslations } from 'next-intl/server';
+
+export default async function AboutPage({
+  params: { locale },
+}: {
+  params: { locale: string };
+}) {
+  return (
+    <div className="container mx-auto px-4 py-16 max-w-3xl">
+      <h1 className="text-4xl font-bold mb-6">About Us</h1>
+      <div className="prose prose-gray dark:prose-invert">
+        <p>Welcome to News Platform, your trusted source for news and information.</p>
+        <h2>Our Mission</h2>
+        <p>To provide accurate, timely, and comprehensive news coverage to our readers.</p>
+        <h2>Our Team</h2>
+        <p>We are a dedicated team of journalists, editors, and technologists passionate about delivering quality journalism.</p>
+        <h2>Contact</h2>
+        <p>Have questions? We'd love to hear from you.</p>
+      </div>
+    </div>
+  );
+}
