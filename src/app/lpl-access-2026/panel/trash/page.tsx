@@ -123,7 +123,7 @@ export default function TrashPage() {
         <h2 className="text-2xl font-bold tracking-tight">Corbeille</h2>
         <p className="text-muted-foreground">
           Les éléments supprimés (médias, articles, utilisateurs) restent ici 30 jours avant
-          d'être définitivement effacés. Vous pouvez les restaurer à tout moment avant cette date.
+          d&apos;être définitivement effacés. Vous pouvez les restaurer à tout moment avant cette date.
         </p>
       </div>
 
