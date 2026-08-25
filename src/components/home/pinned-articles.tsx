@@ -44,18 +44,20 @@ export async function PinnedArticles({ locale, articles: articlesProp }: PinnedA
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      {/* Main Featured Article - image on top, caption below it (same
-          layout family as the side cards) instead of the title overlaid
-          directly on the photo. The overlaid version made the title -
-          at up to text-4xl, wrapping to 2-3 lines on a narrow phone -
-          cover most of the actual image in the responsive layout; a
-          smaller title below a full, unobstructed image reads better
-          and matches the side cards' own visual language. Author name
-          dropped from the meta row per request - date + reading time is
-          enough here, the byline is one click away on the article. */}
+      {/* Main Featured Article - title overlaid at the bottom of the
+          image, same layout family as the hero slider (dark gradient +
+          text pinned to the bottom edge), but sized down: the hero
+          slider's own title was reduced from text-lg..4xl down to
+          text-base..3xl for the same "too big" complaint, so this
+          matches that same smaller scale rather than the old
+          text-2xl..4xl. A smaller title leaves the photo itself visible
+          on a narrow phone instead of the text block covering most of
+          it. Author name dropped from the meta row per request - date +
+          reading time is enough here, the byline is one click away on
+          the article. */}
       <Link
         href={`/${locale}/articles/${mainArticle.slug}`}
-        className="group block overflow-hidden rounded-xl border lg:col-span-2"
+        className="group relative overflow-hidden rounded-xl lg:col-span-2"
       >
         <div className="relative aspect-video w-full overflow-hidden bg-muted">
           {mainArticle.coverImage ? (
@@ -71,18 +73,19 @@ export async function PinnedArticles({ locale, articles: articlesProp }: PinnedA
               <span className="text-4xl font-bold text-muted-foreground">📰</span>
             </div>
           )}
-          <Badge variant="secondary" className="absolute left-4 top-4 bg-primary text-white">
-            À la une
-          </Badge>
-        </div>
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-        <div className="p-4 sm:p-6">
-          <h2 className="text-xl font-bold sm:text-2xl">
-            {mainArticle.title}
-          </h2>
-          <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground sm:text-sm">
-            <span>{formatDate(mainArticle.createdAt)}</span>
-            <span>{getReadingTime(mainArticle.content)} min</span>
+          <div className="absolute bottom-0 p-4 text-white sm:p-6">
+            <Badge variant="secondary" className="mb-2 bg-primary text-white">
+              À la une
+            </Badge>
+            <h2 className="text-base font-bold leading-tight sm:text-xl md:text-2xl">
+              {mainArticle.title}
+            </h2>
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-white/70 sm:text-sm">
+              <span>{formatDate(mainArticle.createdAt)}</span>
+              <span>{getReadingTime(mainArticle.content)} min</span>
+            </div>
           </div>
         </div>
       </Link>
