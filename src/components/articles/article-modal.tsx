@@ -19,6 +19,22 @@ interface ArticleModalProps {
 
 export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
   const [isVisible, setIsVisible] = useState(false);
+  // Tracks whether the slide-in entrance transition has actually finished
+  // playing. Tailwind's translate-y-0 still sets `transform:
+  // translate(0px, 0px)` - a non-`none` transform - not the same as
+  // never having a transform at all. `position: sticky` on a descendant
+  // (the cover image below) silently stops working under ANY ancestor
+  // with a live transform, even a visually-inert translate(0,0) - that's
+  // the actual reason the cover image wasn't sticking while scrolling,
+  // the transform from this entrance animation was never removed once
+  // the animation was done playing. Once hasEntered flips true, the
+  // wrapper below drops the transform/transition classes entirely
+  // (translateY(0) and "no transform" render identically, so nothing
+  // visually changes) so the sticky image works for the rest of the
+  // time the modal is open. isVisible flipping back to false (closing)
+  // re-enables the transform classes for the exit animation.
+  const [hasEntered, setHasEntered] = useState(false);
+  const animatingTransform = !hasEntered || !isVisible;
   const router = useRouter();
 
   useEffect(() => {
@@ -53,9 +69,12 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4 sm:p-6">
       <div
-        className={`relative w-full max-w-4xl mx-auto my-8 transition-all duration-300 ${
-          isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
+        className={`relative w-full max-w-4xl mx-auto my-8 ${
+          animatingTransform
+            ? `transition-all duration-300 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'}`
+            : ''
         }`}
+        onTransitionEnd={() => setHasEntered(true)}
       >
         {/* max-h/overflow-y-auto keeps this a standard, contained dialog
             instead of a page-length block - a previous version was
@@ -69,7 +88,12 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
           {/* Close Button */}
           <button
             onClick={handleClose}
-            className="absolute right-4 top-4 z-10 rounded-full p-2 hover:bg-muted transition-colors bg-background/80 backdrop-blur-sm"
+            // z-20, one above the sticky cover image's z-10 below - now
+            // that the image actually sticks (see the transform fix
+            // above), it can end up pinned right under this button; this
+            // keeps the close button clickable and visible on top of it
+            // instead of the two fighting over the same stacking layer.
+            className="absolute right-4 top-4 z-20 rounded-full p-2 hover:bg-muted transition-colors bg-background/80 backdrop-blur-sm"
           >
             <X className="h-5 w-5" />
           </button>
