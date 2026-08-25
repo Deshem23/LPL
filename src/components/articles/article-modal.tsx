@@ -139,27 +139,34 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
                 above the content flowing past underneath during that
                 transition; shadow-lg gives it a visible edge against the
                 content once pinned, instead of a hard flat cutoff.
-                bg-background is the actual fix for the header text being
-                visible "passing through" the image while scrolling: a
-                stacking z-index only controls paint ORDER, it doesn't
-                make an element opaque - without an explicit background,
-                this div is transparent everywhere the photo itself
-                hasn't painted yet (each time it reloads/decodes as the
-                article changes, or any edge where the photo doesn't
-                fully cover the box), so the header text scrolling
-                underneath shows straight through instead of disappearing
-                cleanly behind it. */}
+                bg-background makes the box itself opaque (fixes the
+                header text showing through anywhere the photo hasn't
+                painted yet).
+
+                The spacer div below (h-6, replacing what used to be
+                mt-6 directly on the sticky element) is the fix for the
+                remaining gap: a CSS margin is never painted - it's
+                genuinely empty space - so a margin-top on the STICKY
+                element itself stays empty even once stuck, and that
+                strip is exactly where scrolling text was still visible
+                sliding past underneath. A separate, ordinary (non-sticky)
+                spacer scrolls away with the rest of the header instead,
+                so once the image is stuck it's flush against the top of
+                the scroll area with nothing behind it. */}
             {article.featured_image || article.coverImage ? (
-              <div className="sticky top-0 z-10 mt-6 h-[280px] w-full overflow-hidden rounded-lg bg-background shadow-lg">
-                <Image
-                  src={article.featured_image || article.coverImage}
-                  alt={article.title || 'Article'}
-                  fill
-                  sizes="(min-width: 768px) 720px, 100vw"
-                  priority
-                  className="object-cover"
-                />
-              </div>
+              <>
+                <div className="h-6" aria-hidden="true" />
+                <div className="sticky top-0 z-10 h-[280px] w-full overflow-hidden rounded-lg bg-background shadow-lg">
+                  <Image
+                    src={article.featured_image || article.coverImage}
+                    alt={article.title || 'Article'}
+                    fill
+                    sizes="(min-width: 768px) 720px, 100vw"
+                    priority
+                    className="object-cover"
+                  />
+                </div>
+              </>
             ) : null}
 
             {/* Content - Tailwind Typography's `prose` sets its base
