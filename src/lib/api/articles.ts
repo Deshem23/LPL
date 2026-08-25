@@ -20,6 +20,7 @@ import {
 import {
   getCategoryWithChildIdsBySlug,
   getSubcategoryBySlug,
+  getRelatedCategoryIds,
 } from '@/lib/services/category-service';
 import { searchArticlesInDb } from '@/lib/services/search-service';
 
@@ -273,4 +274,72 @@ export async function getArticle({
   });
 
   return mapDbArticle(row);
+}
+
+/**
+ * "Related articles" for the article modal - other published articles in
+ * the same section (see getRelatedCategoryIds), ranked instead of just
+ * "most recent", so a busy category doesn't always surface the same
+ * handful of newest posts and nothing else. Pulls a wider candidate pool
+ * (`poolSize`) from the DB - already roughly recency/pin-ordered, see
+ * article-service.ts's getArticles() - then re-ranks in memory by a
+ * simple, explainable score:
+ *
+ *   +3  candidate is in the exact same category/subcategory as `article`
+ *       (not just the same top-level section) - the tightest match
+ *   +1  per shared tag with `article`, capped at +3 - topical overlap
+ *       matters even across different subcategories of the same section
+ *   +2  published within the last 7 days, +1 within the last 30 - keeps
+ *       results fresh instead of forever surfacing the same old top posts
+ *
+ * Ties (including "no signal at all" - a same-section article sharing no
+ * tags, published long ago) fall back to view count, then publish date,
+ * so the list is still deterministic and still favors real content over
+ * arbitrary DB order.
+ */
+export async function getRelatedArticles({
+  article,
+  limit = 4,
+  poolSize = 20,
+}: {
+  article: Article;
+  limit?: number;
+  poolSize?: number;
+}): Promise<Article[]> {
+  if (!article.category?.id) return [];
+
+  const categoryIds = await getRelatedCategoryIds(article.category.id);
+  const { articles: rows } = await fetchArticlesFromDb({
+    categoryIds,
+    status: 'published',
+    limit: poolSize,
+  });
+
+  const currentTags = new Set(article.tags || []);
+  const now = Date.now();
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  const scored = rows
+    .map(mapDbArticle)
+    .filter((a) => a.slug !== article.slug)
+    .map((a) => {
+      let score = 0;
+      if (a.category?.id === article.category!.id) score += 3;
+
+      const sharedTags = (a.tags || []).filter((t) => currentTags.has(t)).length;
+      score += Math.min(sharedTags, 3);
+
+      const ageMs = now - new Date(a.createdAt).getTime();
+      if (ageMs <= 7 * DAY_MS) score += 2;
+      else if (ageMs <= 30 * DAY_MS) score += 1;
+
+      return { article: a, score };
+    })
+    .sort((x, y) => {
+      if (y.score !== x.score) return y.score - x.score;
+      if (y.article.views !== x.article.views) return y.article.views - x.article.views;
+      return new Date(y.article.createdAt).getTime() - new Date(x.article.createdAt).getTime();
+    });
+
+  return scored.slice(0, limit).map((s) => s.article);
 }

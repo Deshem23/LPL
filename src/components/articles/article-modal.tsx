@@ -185,40 +185,49 @@ export function ArticleModal({ article, onClose, locale, relatedArticles = [] }:
               </div>
             )}
 
-            {/* Related Articles - other published articles from the same
-                category, fetched server-side (see
+            {/* Related Articles - up to 4, ranked (not just "most
+                recent") - see getRelatedArticles() in lib/api/articles.ts
+                for the scoring logic. Fetched server-side (see
                 src/app/[locale]/articles/[slug]/page.tsx) so this stays
                 a plain prop instead of a client-side fetch. Placed below
-                the author card per request. */}
+                the author card per request.
+
+                Compact thumbnail-and-text rows (same treatment as the
+                homepage's "à la une" side cards) instead of a grid of
+                large aspect-video images - a big photo card per related
+                article read as too dominant a block for something meant
+                to be a lightweight "you might also like" list. */}
             {relatedArticles.length > 0 && (
               <div className="mt-8 border-t pt-6">
                 <h3 className="mb-4 text-lg font-semibold">Articles similaires</h3>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="space-y-3">
                   {relatedArticles.map((related) => (
                     <Link
                       key={related.id}
                       href={`/${locale}/articles/${related.slug}`}
-                      className="group block"
+                      className="group flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/50"
                     >
-                      <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-muted">
+                      <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-md bg-muted">
                         {related.coverImage ? (
                           <Image
                             src={related.coverImage}
                             alt={related.title}
                             fill
-                            className="object-cover transition-transform duration-300 group-hover:scale-105"
-                            sizes="(min-width: 640px) 33vw, 100vw"
+                            className="object-cover"
+                            sizes="56px"
                           />
                         ) : (
                           <div className="flex h-full items-center justify-center bg-muted">
-                            <span className="text-2xl">📄</span>
+                            <span className="text-lg">📄</span>
                           </div>
                         )}
                       </div>
-                      <h4 className="mt-2 line-clamp-2 text-sm font-medium group-hover:text-primary">
-                        {related.title}
-                      </h4>
-                      <p className="mt-1 text-xs text-muted-foreground">{formatDate(related.createdAt)}</p>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="line-clamp-2 text-sm font-medium group-hover:text-primary">
+                          {related.title}
+                        </h4>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{formatDate(related.createdAt)}</p>
+                      </div>
                     </Link>
                   ))}
                 </div>
