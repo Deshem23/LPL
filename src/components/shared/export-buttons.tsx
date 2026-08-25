@@ -3,7 +3,15 @@
 import { useState } from 'react';
 import { FileSpreadsheet, FileText, Printer, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { getLogoDataUrl, exportToExcel, exportToWord, exportToPdf, type ExportColumn } from '@/lib/export-utils';
+import {
+  getLogoDataUrl,
+  exportToExcel,
+  exportToWord,
+  exportToPdf,
+  renderBarChartDataUrl,
+  type ExportColumn,
+  type ChartDatum,
+} from '@/lib/export-utils';
 
 interface ExportButtonsProps {
   /** Shown as the document title/heading in every exported format. */
@@ -26,12 +34,31 @@ interface ExportButtonsProps {
    *  matching rows?" from a count it hasn't fetched yet - pass e.g.
    *  `total === 0` from whatever query is driving the page. */
   disabled?: boolean;
+  /** When provided, a bar chart is rendered from this data and embedded
+   *  above the table in the PDF and Word exports (skipped for Excel -
+   *  the SpreadsheetML format this uses has no straightforward way to
+   *  embed a raster image, and a real chart object is well beyond what's
+   *  worth building for this). Pass the same numbers already on screen -
+   *  e.g. a status breakdown's counts, or an author table's published
+   *  counts - rather than fetching anything extra just for the chart. */
+  chartData?: ChartDatum[];
+  /** Chart title, shown above the bars. Defaults to `title` if omitted. */
+  chartTitle?: string;
 }
 
 // Reusable "Exporter" button group - Excel / Word / PDF, all generated
 // client-side with no new dependency (see lib/export-utils.ts for how).
 // Used on both /admin/reports and /admin/audit-log.
-export function ExportButtons({ title, filename, columns, rows, getRows, disabled }: ExportButtonsProps) {
+export function ExportButtons({
+  title,
+  filename,
+  columns,
+  rows,
+  getRows,
+  disabled,
+  chartData,
+  chartTitle,
+}: ExportButtonsProps) {
   const [exporting, setExporting] = useState<'excel' | 'word' | 'pdf' | null>(null);
   const isDisabled = disabled || (!getRows && (rows?.length ?? 0) === 0) || exporting !== null;
 
@@ -43,9 +70,10 @@ export function ExportButtons({ title, filename, columns, rows, getRows, disable
         getLogoDataUrl(),
       ]);
       if (exportRows.length === 0) return;
+      const chart = chartData && chartData.length > 0 ? renderBarChartDataUrl(chartTitle || title, chartData) : null;
       if (kind === 'excel') exportToExcel(filename, title, columns, exportRows);
-      else if (kind === 'word') exportToWord(filename, title, columns, exportRows, logo);
-      else exportToPdf(title, columns, exportRows, logo);
+      else if (kind === 'word') exportToWord(filename, title, columns, exportRows, logo, chart);
+      else exportToPdf(title, columns, exportRows, logo, chart);
     } finally {
       setExporting(null);
     }

@@ -47,9 +47,21 @@ const STATUS_LABELS: Record<string, string> = {
   archived: 'Archivé',
 };
 
-export async function getContentStatusBreakdown(): Promise<StatusBreakdownRow[]> {
+export interface ReportPeriod {
+  /** 'YYYY-MM-DD', inclusive. Both filter on created_at - "daily /
+   *  weekly / monthly" report periods below mean "articles CREATED in
+   *  this window", consistently across the status breakdown and the
+   *  per-author table. */
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export async function getContentStatusBreakdown(period?: ReportPeriod): Promise<StatusBreakdownRow[]> {
   const supabase = createAdminClient();
-  const { data, error } = await supabase.from('articles').select('status');
+  let query = supabase.from('articles').select('status');
+  if (period?.dateFrom) query = query.gte('created_at', `${period.dateFrom}T00:00:00.000Z`);
+  if (period?.dateTo) query = query.lte('created_at', `${period.dateTo}T23:59:59.999Z`);
+  const { data, error } = await query;
 
   if (error || !data) {
     console.error('Error fetching content status breakdown:', error);
@@ -66,11 +78,15 @@ export async function getContentStatusBreakdown(): Promise<StatusBreakdownRow[]>
     .sort((a, b) => b.count - a.count);
 }
 
-export async function getAuthorPerformanceReport(): Promise<AuthorReportRow[]> {
+export async function getAuthorPerformanceReport(period?: ReportPeriod): Promise<AuthorReportRow[]> {
   const supabase = createAdminClient();
 
+  let articlesQuery = supabase.from('articles').select('author_id, status, view_count');
+  if (period?.dateFrom) articlesQuery = articlesQuery.gte('created_at', `${period.dateFrom}T00:00:00.000Z`);
+  if (period?.dateTo) articlesQuery = articlesQuery.lte('created_at', `${period.dateTo}T23:59:59.999Z`);
+
   const [{ data: articles, error: artError }, { data: users, error: userError }] = await Promise.all([
-    supabase.from('articles').select('author_id, status, view_count'),
+    articlesQuery,
     supabase.from('users').select('id, name'),
   ]);
 
@@ -134,16 +150,19 @@ export async function getUpcomingScheduledArticles(limit: number = 10): Promise<
   }));
 }
 
-export async function getReportsData(): Promise<ReportsData> {
+export async function getReportsData(period?: ReportPeriod): Promise<ReportsData> {
   // Same reasoning as api/admin/stats/route.ts - flip any overdue
   // 'scheduled' article to 'published' before computing counts, so the
   // status breakdown and author table reflect what's actually true right
   // now instead of what was true whenever this article was last read.
   await publishDueScheduledArticles();
 
+  // upcomingScheduled is deliberately NOT scoped to `period` - "what's
+  // coming up next" is always relative to now, a daily/weekly/monthly
+  // window over when articles were CREATED has no natural meaning for it.
   const [statusBreakdown, authorReport, upcomingScheduled] = await Promise.all([
-    getContentStatusBreakdown(),
-    getAuthorPerformanceReport(),
+    getContentStatusBreakdown(period),
+    getAuthorPerformanceReport(period),
     getUpcomingScheduledArticles(10),
   ]);
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Clock, FileText, Users, Activity, LayoutGrid, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -124,6 +124,37 @@ const ACTIVITY_ACTION_OPTIONS = [
 
 type ReportType = 'overview' | 'content' | 'activity' | 'scheduled';
 
+type ReportPeriod = 'daily' | 'weekly' | 'monthly' | 'all';
+
+const PERIOD_OPTIONS: { value: ReportPeriod; label: string }[] = [
+  { value: 'daily', label: "Aujourd'hui" },
+  { value: 'weekly', label: '7 derniers jours' },
+  { value: 'monthly', label: '30 derniers jours' },
+  { value: 'all', label: 'Tout' },
+];
+
+/** Turns a period into a 'YYYY-MM-DD' dateFrom/dateTo pair for the
+ *  overview/content reports (see reports-service.ts's ReportPeriod,
+ *  which filters on created_at) - both scoped to "one or several users
+ *  at once, over a chosen period", per the daily/weekly/monthly report
+ *  request. Returns {} for 'all' (no filter, same as before this was
+ *  added), consistent with the API route treating missing params as
+ *  all-time. */
+function periodToRange(period: ReportPeriod): { dateFrom?: string; dateTo?: string } {
+  if (period === 'all') return {};
+  const today = new Date();
+  const dateTo = today.toISOString().slice(0, 10);
+  const from = new Date(today);
+  if (period === 'daily') {
+    // dateFrom === dateTo is fine - both bounds are inclusive server-side.
+  } else if (period === 'weekly') {
+    from.setDate(from.getDate() - 6);
+  } else if (period === 'monthly') {
+    from.setDate(from.getDate() - 29);
+  }
+  return { dateFrom: from.toISOString().slice(0, 10), dateTo };
+}
+
 // The reports hub was previously one dashboard with a single "Exporter"
 // button buried in one card - this reframes it as an actual report
 // generator: pick what kind of report (content production, user
@@ -140,6 +171,11 @@ export default function AdminReportsPage() {
   const [users, setUsers] = useState<SelectableUser[]>([]);
   const [reportType, setReportType] = useState<ReportType>('overview');
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  // Shared by the "Vue d'ensemble" and "Production de contenu" tabs -
+  // scopes both to articles CREATED in this window (see reports-service.ts).
+  // Doesn't touch the "Activité" tab, which already has its own explicit
+  // date-range inputs.
+  const [period, setPeriod] = useState<ReportPeriod>('all');
 
   // Activity report's own filters - it also supports a date range and an
   // event-type filter (the audit trail's own dimension of "what kind of
@@ -149,29 +185,32 @@ export default function AdminReportsPage() {
   const [activityDateTo, setActivityDateTo] = useState('');
   const [activityPage, setActivityPage] = useState(1);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch('/api/admin/reports', { cache: 'no-store' });
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body.error || 'Impossible de charger les rapports.');
-        }
-        const json = await res.json();
-        if (!cancelled) setData(json);
-      } catch (err: any) {
-        if (!cancelled) setError(err.message || 'Impossible de charger les rapports.');
-      } finally {
-        if (!cancelled) setLoading(false);
+  const loadReports = useCallback(async (p: ReportPeriod) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { dateFrom, dateTo } = periodToRange(p);
+      const params = new URLSearchParams();
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
+      const qs = params.toString();
+      const res = await fetch(`/api/admin/reports${qs ? `?${qs}` : ''}`, { cache: 'no-store' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Impossible de charger les rapports.');
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+      const json = await res.json();
+      setData(json);
+    } catch (err: any) {
+      setError(err.message || 'Impossible de charger les rapports.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadReports(period);
+  }, [period, loadReports]);
 
   // Full user list, for the "one user or several users at once" filter -
   // shared across the content and activity report types.
@@ -298,17 +337,41 @@ export default function AdminReportsPage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Overview - sitewide, no per-user scoping */}
+        {/* Overview - sitewide, no per-user scoping, but scoped to the
+            chosen period (daily/weekly/monthly/all) */}
         <TabsContent value="overview" className="space-y-6">
           <Card>
             <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle>Répartition par statut</CardTitle>
-              <ExportButtons
-                title="Rapport - Vue d'ensemble"
-                filename={`rapport-vue-ensemble-${new Date().toISOString().slice(0, 10)}`}
-                columns={STATUS_COLUMNS}
-                rows={statusExportRows}
-              />
+              <div>
+                <CardTitle>Répartition par statut</CardTitle>
+                {period !== 'all' && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Période : {PERIOD_OPTIONS.find((o) => o.value === period)?.label}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Select value={period} onValueChange={(v) => setPeriod(v as ReportPeriod)}>
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="Période" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PERIOD_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <ExportButtons
+                  title="Rapport - Vue d'ensemble"
+                  filename={`rapport-vue-ensemble-${new Date().toISOString().slice(0, 10)}`}
+                  columns={STATUS_COLUMNS}
+                  rows={statusExportRows}
+                  chartData={(data?.statusBreakdown || []).map((s) => ({ label: s.label, value: s.count }))}
+                  chartTitle="Répartition par statut"
+                />
+              </div>
             </CardHeader>
             <CardContent>
               {data.statusBreakdown.length === 0 ? (
@@ -363,9 +426,24 @@ export default function AdminReportsPage() {
             <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle>Production par auteur</CardTitle>
-                {scopeLabel && <p className="mt-1 text-xs text-muted-foreground">Filtré sur : {scopeLabel}</p>}
+                <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+                  {scopeLabel && <p>Filtré sur : {scopeLabel}</p>}
+                  {period !== 'all' && <p>Période : {PERIOD_OPTIONS.find((o) => o.value === period)?.label}</p>}
+                </div>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <Select value={period} onValueChange={(v) => setPeriod(v as ReportPeriod)}>
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="Période" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PERIOD_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <UserMultiSelect
                   users={users}
                   selectedIds={selectedUserIds}
@@ -377,6 +455,8 @@ export default function AdminReportsPage() {
                   filename={`rapport-auteurs-${new Date().toISOString().slice(0, 10)}`}
                   columns={AUTHOR_REPORT_COLUMNS}
                   rows={filteredAuthorReport}
+                  chartData={filteredAuthorReport.map((r) => ({ label: r.authorName, value: r.published }))}
+                  chartTitle="Articles publiés par auteur"
                 />
               </div>
             </CardHeader>

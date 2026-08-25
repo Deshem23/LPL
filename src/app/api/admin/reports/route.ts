@@ -7,7 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 // actual queries this wraps.
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const user = await getCurrentUser();
     if (!user) {
@@ -22,7 +22,14 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const data = await getReportsData();
+    // Optional daily/weekly/monthly (or custom) period - see the "Période"
+    // selector on /admin/reports. Omitted entirely = all-time, same as
+    // before this was added.
+    const { searchParams } = new URL(request.url);
+    const dateFrom = searchParams.get('dateFrom') || undefined;
+    const dateTo = searchParams.get('dateTo') || undefined;
+
+    const data = await getReportsData({ dateFrom, dateTo });
     return NextResponse.json(data);
   } catch (error) {
     console.error('Error fetching reports:', error);
