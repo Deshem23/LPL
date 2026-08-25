@@ -164,18 +164,42 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
                 painted yet).
 
                 The spacer div below (h-6, replacing what used to be
-                mt-6 directly on the sticky element) is the fix for the
-                remaining gap: a CSS margin is never painted - it's
-                genuinely empty space - so a margin-top on the STICKY
-                element itself stays empty even once stuck, and that
-                strip is exactly where scrolling text was still visible
-                sliding past underneath. A separate, ordinary (non-sticky)
-                spacer scrolls away with the rest of the header instead,
-                so once the image is stuck it's flush against the top of
-                the scroll area with nothing behind it. */}
+                mt-6 directly on the sticky element) is a small non-sticky
+                gap between the header and the sticky region - a CSS
+                margin is never painted, so putting this on the sticky
+                element itself would leave permanently empty, uncovered
+                space; a separate ordinary element scrolls away cleanly
+                instead.
+
+                Both a top and bottom fade strip flank the image (see
+                their own comments below) so scrolling text fades out as
+                it approaches either edge rather than being hard-clipped.
+                The bottom one had room to spare below the image and
+                could just dock flush against it. The top one is trickier:
+                once the image sticks flush at the very top of the scroll
+                area (top-0), there is no visible space left above it to
+                fade into - anything above that point is already clipped
+                by the scroll container's own overflow. So the image's
+                own sticky offset is pushed down to top-10 (40px, matching
+                the strip's h-10) to deliberately reserve that band for
+                the fade strip to live in - the bottom strip's offset
+                shifts down to match (top-[320px] = 40 + 280). */}
             {article.featured_image || article.coverImage ? (
               <>
                 <div className="h-6" aria-hidden="true" />
+                {/* Top fade strip - sticky, occupying the 40px band
+                    reserved above the image (see comment above). Header
+                    text fades out here as it scrolls up and approaches
+                    the image, instead of disappearing behind a hard clip
+                    edge. bg-gradient-to-b from-transparent (top, furthest
+                    from the image) to-background (bottom, flush against
+                    the image) is the mirror of the bottom strip's
+                    gradient below - reversed because this is the "away"
+                    edge instead of the "near" edge. */}
+                <div
+                  className="sticky top-0 z-10 isolate h-10 w-full bg-gradient-to-b from-transparent to-background pointer-events-none"
+                  aria-hidden="true"
+                />
                 {/* isolate forces this element into its own guaranteed
                     stacking context, so its z-index is resolved cleanly
                     against its siblings with no ambiguity from any
@@ -184,8 +208,11 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
                     (fixed), the box being fully opaque (fixed), and
                     nothing left above it in paint order, so content
                     scrolling underneath is covered for the image's
-                    entire height, not just glimpsed at one edge. */}
-                <div className="sticky top-0 z-10 isolate h-[280px] w-full overflow-hidden rounded-lg bg-background shadow-lg">
+                    entire height, not just glimpsed at one edge. top-10
+                    (rather than top-0) leaves the 40px band above it free
+                    for the top fade strip - see the comment block above
+                    this whole section. */}
+                <div className="sticky top-10 z-10 isolate h-[280px] w-full overflow-hidden rounded-lg bg-background shadow-lg">
                   <Image
                     src={article.featured_image || article.coverImage}
                     alt={article.title || 'Article'}
@@ -196,20 +223,21 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
                   />
                 </div>
                 {/* Fade strip - its own sticky element, pinned flush
-                    against the image's bottom edge (top-[280px] matches
-                    the image's h-[280px], so once both are stuck this
-                    sits immediately below it with no gap). Rather than
-                    relying purely on the image being a perfect opaque
-                    hard cutoff, scrolling text now visually fades out
-                    over this ~40px band as it passes underneath -
-                    softer, more forgiving UX, and it reads as
-                    intentional instead of an abrupt clip. bg-gradient-to-b
-                    from-background (opaque, matching the card) to
-                    transparent is the actual fade; pointer-events-none
-                    keeps it from ever intercepting clicks/selection on
-                    the article text passing beneath it. */}
+                    against the image's bottom edge (top-[320px] = the
+                    image's top-10 offset plus its 280px height, so once
+                    both are stuck this sits immediately below it with no
+                    gap). Rather than relying purely on the image being a
+                    perfect opaque hard cutoff, scrolling text now
+                    visually fades out over this ~40px band as it passes
+                    underneath - softer, more forgiving UX, and it reads
+                    as intentional instead of an abrupt clip.
+                    bg-gradient-to-b from-background (opaque, matching the
+                    card) to transparent is the actual fade;
+                    pointer-events-none keeps it from ever intercepting
+                    clicks/selection on the article text passing
+                    beneath it. */}
                 <div
-                  className="sticky top-[280px] z-10 isolate h-10 w-full bg-gradient-to-b from-background to-transparent pointer-events-none"
+                  className="sticky top-[320px] z-10 isolate h-10 w-full bg-gradient-to-b from-background to-transparent pointer-events-none"
                   aria-hidden="true"
                 />
               </>
