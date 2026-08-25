@@ -67,7 +67,27 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4 sm:p-6">
+    <>
+      {/* Backdrop, as its own element - NOT an ancestor of the modal
+          card below. backdrop-filter (backdrop-blur-sm) breaks
+          position: sticky for ANY descendant, not just elements
+          directly between the sticky element and its scroll container -
+          this is a well-documented cross-browser quirk (same family of
+          bug as a `transform` on an ancestor, see the hasEntered/
+          animatingTransform logic above). This div previously wrapped
+          the entire modal, including the sticky cover image, which is
+          why the image kept failing to stay properly locked in place
+          for the WHOLE time the modal was open (not just during the
+          300ms entrance animation the earlier fix addressed) - text
+          kept "passing through" it because the browser's sticky
+          calculation was continuously broken by this ancestor filter,
+          not just momentarily. */}
+      {/* No onClick here - the original single div never closed on
+          backdrop click either (only the X button / author link did),
+          so this split keeps that exact same behavior rather than
+          introducing a new interaction. */}
+      <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
+      <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-6">
       <div
         className={`relative w-full max-w-4xl mx-auto my-8 ${
           animatingTransform
@@ -231,6 +251,7 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
           </article>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
