@@ -312,6 +312,13 @@ export function ArticleForm({ article, onSuccess, onCancel }: ArticleFormProps) 
                     <SelectItem value="review">En relecture</SelectItem>
                     <SelectItem value="scheduled">Programmé</SelectItem>
                     <SelectItem value="published">Publié</SelectItem>
+                    {/* The DB column and the admin article list (see its
+                        statusLabels/statusColors/filter) have supported
+                        "archived" all along - this dropdown was just
+                        never given the option to actually set it, so
+                        there was no way to archive an article from the
+                        editor. */}
+                    <SelectItem value="archived">Archivé</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

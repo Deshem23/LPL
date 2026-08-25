@@ -66,7 +66,7 @@ export interface CreateArticleData {
   content: string;
   featured_image?: string;
   cover_image?: string;
-  status?: 'draft' | 'review' | 'scheduled' | 'published';
+  status?: 'draft' | 'review' | 'scheduled' | 'published' | 'archived';
   is_pinned?: boolean;
   is_trending?: boolean;
   is_suggestion?: boolean;

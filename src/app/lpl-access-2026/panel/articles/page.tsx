@@ -3,9 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { 
-  Plus, 
-  Search, 
+import {
+  Plus,
+  Search,
   MoreVertical,
   Edit,
   Trash2,
@@ -14,7 +14,8 @@ import {
   Clock,
   Calendar,
   FileText,
-  AlertCircle
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -66,11 +67,23 @@ export default function AdminArticlesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  // Category/subcategory/author/date filters (see the "make the article
+  // page more intuitive" request) - all applied client-side against the
+  // full article list already fetched below, same pattern as the
+  // existing search/status filters, rather than round-tripping to a
+  // filtered API call for each combination.
+  const [categories, setCategories] = useState<any[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [subcategoryFilter, setSubcategoryFilter] = useState('all');
+  const [authors, setAuthors] = useState<any[]>([]);
+  const [authorFilter, setAuthorFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState('');
   const { toast } = useToast();
   const router = useRouter();
 
   useEffect(() => {
     loadArticles();
+    loadFilterOptions();
   }, []);
 
   const loadArticles = async () => {
@@ -82,7 +95,11 @@ export default function AdminArticlesPage() {
       // which needs SUPABASE_SERVICE_ROLE_KEY — that env var is never
       // sent to the browser, so calling it here silently falls back to
       // the anon key and gets filtered by RLS to "published" only.
-      const response = await fetch('/api/articles?status=all&limit=100', { cache: 'no-store' });
+      //
+      // limit bumped from 100 to 1000 - the filters below (category,
+      // author, date) are meant to search across the whole article
+      // catalog, not just its first page.
+      const response = await fetch('/api/articles?status=all&limit=1000', { cache: 'no-store' });
       if (!response.ok) {
         throw new Error(`Request failed with status ${response.status}`);
       }
@@ -100,6 +117,54 @@ export default function AdminArticlesPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Categories (with nested subcategories) and authors, for the two new
+  // filter dropdowns. Best-effort: /api/users is admin-only
+  // (canViewUsers), so an editor/writer/contributor loading this page
+  // simply won't get an author list to filter by - the rest of the page
+  // still works normally for them.
+  const loadFilterOptions = async () => {
+    try {
+      const catsRes = await fetch('/api/categories', { cache: 'no-store' });
+      if (catsRes.ok) {
+        const catsJson = await catsRes.json();
+        setCategories(catsJson.categories || []);
+      }
+    } catch (error) {
+      console.error('Error loading categories for filter:', error);
+    }
+    try {
+      const usersRes = await fetch('/api/users', { cache: 'no-store' });
+      if (usersRes.ok) {
+        const usersJson = await usersRes.json();
+        setAuthors(usersJson.users || []);
+      }
+    } catch (error) {
+      console.error('Error loading authors for filter:', error);
+    }
+  };
+
+  const handleCategoryFilterChange = (value: string) => {
+    setCategoryFilter(value);
+    setSubcategoryFilter('all');
+  };
+
+  const subcategoriesForFilter =
+    categoryFilter === 'all'
+      ? []
+      : categories.find((c) => c.id === categoryFilter)?.subcategories || [];
+
+  const hasActiveFilters =
+    !!search || statusFilter !== 'all' || categoryFilter !== 'all' || authorFilter !== 'all' || !!dateFilter;
+
+  const resetFilters = () => {
+    setSearch('');
+    setStatusFilter('all');
+    setCategoryFilter('all');
+    setSubcategoryFilter('all');
+    setAuthorFilter('all');
+    setDateFilter('');
   };
 
   const handleDelete = async (id: string) => {
@@ -129,12 +194,43 @@ export default function AdminArticlesPage() {
     }
   };
 
-  // Filter articles based on search and status
-  const filteredArticles = articles.filter(article => {
-    const matchesSearch = article.title?.toLowerCase().includes(search.toLowerCase()) ||
-                         article.excerpt?.toLowerCase().includes(search.toLowerCase());
+  // Filter articles based on search, status, category/subcategory, author
+  // and date. article.category here is the embedded object from
+  // getArticles() (see article-service.ts) - category.id is whatever
+  // category_id actually points at (could itself be a subcategory row),
+  // and category.parent is only set when it does point at a subcategory.
+  const filteredArticles = articles.filter((article) => {
+    const matchesSearch =
+      article.title?.toLowerCase().includes(search.toLowerCase()) ||
+      article.excerpt?.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === 'all' || article.status === statusFilter;
-    return matchesSearch && matchesStatus;
+
+    const matchesSubcategory = subcategoryFilter === 'all' || article.category?.id === subcategoryFilter;
+    const matchesCategory =
+      categoryFilter === 'all' ||
+      (subcategoryFilter !== 'all'
+        ? true // subcategory match above is already the more specific check
+        : article.category?.id === categoryFilter || article.category?.parent?.id === categoryFilter);
+
+    const matchesAuthor = authorFilter === 'all' || article.author_id === authorFilter || article.author?.id === authorFilter;
+
+    // dateFilter is a plain 'YYYY-MM-DD' from the <input type="date">,
+    // compared against the article's LOCAL calendar date (not UTC) - two
+    // admins in different timezones should each see "today" mean their
+    // own today.
+    const matchesDate =
+      !dateFilter ||
+      (() => {
+        const raw = article.created_at;
+        if (!raw) return false;
+        const d = new Date(raw);
+        if (isNaN(d.getTime())) return false;
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const localDate = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        return localDate === dateFilter;
+      })();
+
+    return matchesSearch && matchesStatus && matchesCategory && matchesSubcategory && matchesAuthor && matchesDate;
   });
 
   // Calculate stats
@@ -246,42 +342,95 @@ export default function AdminArticlesPage() {
 
       {/* Filters */}
       <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-1 items-center gap-2">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  type="search"
-                  placeholder="Rechercher un article..."
-                  className="pl-9"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Tous les statuts" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">📊 Tous les statuts</SelectItem>
-                  <SelectItem value="published">✅ Publiés</SelectItem>
-                  <SelectItem value="scheduled">📅 Programmés</SelectItem>
-                  <SelectItem value="review">🔍 En relecture</SelectItem>
-                  <SelectItem value="draft">📝 Brouillons</SelectItem>
-                  <SelectItem value="archived">📦 Archivés</SelectItem>
-                </SelectContent>
-              </Select>
+        <CardContent className="space-y-3 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative max-w-sm flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Rechercher un article..."
+                className="pl-9"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>{filteredArticles.length} articles</span>
-              <button 
+              <span>{filteredArticles.length} article{filteredArticles.length !== 1 ? 's' : ''}</span>
+              <button
                 onClick={loadArticles}
                 className="text-primary hover:underline text-xs"
               >
                 Rafraîchir
               </button>
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Statut" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">📊 Tous les statuts</SelectItem>
+                <SelectItem value="published">✅ Publiés</SelectItem>
+                <SelectItem value="scheduled">📅 Programmés</SelectItem>
+                <SelectItem value="review">🔍 En relecture</SelectItem>
+                <SelectItem value="draft">📝 Brouillons</SelectItem>
+                <SelectItem value="archived">📦 Archivés</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={categoryFilter} onValueChange={handleCategoryFilterChange}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder="Catégorie" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes les catégories</SelectItem>
+                {categories.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {subcategoriesForFilter.length > 0 && (
+              <Select value={subcategoryFilter} onValueChange={setSubcategoryFilter}>
+                <SelectTrigger className="w-[170px]">
+                  <SelectValue placeholder="Sous-catégorie" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Toutes les sous-catégories</SelectItem>
+                  {subcategoriesForFilter.map((sub: any) => (
+                    <SelectItem key={sub.id} value={sub.id}>{sub.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            <Select value={authorFilter} onValueChange={setAuthorFilter}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder="Auteur" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous les auteurs</SelectItem>
+                {authors.map((author) => (
+                  <SelectItem key={author.id} value={author.id}>{author.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Input
+              type="date"
+              className="w-[160px]"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+            />
+
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={resetFilters}>
+                <X className="h-3.5 w-3.5" />
+                Réinitialiser
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -305,7 +454,7 @@ export default function AdminArticlesPage() {
               {filteredArticles.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                    {search || statusFilter !== 'all' 
+                    {hasActiveFilters
                       ? 'Aucun article ne correspond à vos filtres.'
                       : 'Aucun article trouvé. Créez votre premier article !'}
                   </TableCell>
