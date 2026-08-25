@@ -195,6 +195,23 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
                     className="object-cover"
                   />
                 </div>
+                {/* Fade strip - its own sticky element, pinned flush
+                    against the image's bottom edge (top-[280px] matches
+                    the image's h-[280px], so once both are stuck this
+                    sits immediately below it with no gap). Rather than
+                    relying purely on the image being a perfect opaque
+                    hard cutoff, scrolling text now visually fades out
+                    over this ~40px band as it passes underneath -
+                    softer, more forgiving UX, and it reads as
+                    intentional instead of an abrupt clip. bg-gradient-to-b
+                    from-background (opaque, matching the card) to
+                    transparent is the actual fade; pointer-events-none
+                    keeps it from ever intercepting clicks/selection on
+                    the article text passing beneath it. */}
+                <div
+                  className="sticky top-[280px] z-10 isolate h-10 w-full bg-gradient-to-b from-background to-transparent pointer-events-none"
+                  aria-hidden="true"
+                />
               </>
             ) : null}
 
