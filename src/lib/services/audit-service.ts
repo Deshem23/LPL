@@ -162,3 +162,49 @@ export async function getAuditLogs(
 
   return { logs, total, totalPages: Math.ceil(total / limit), currentPage: page };
 }
+
+export interface DeleteAuditLogsParams {
+  /** Delete exactly these entries (checkbox selection on the Audit Log
+   *  page). Takes precedence over `before` when both are somehow set. */
+  ids?: string[];
+  /** 'YYYY-MM-DD' - bulk-delete every entry created on or before this
+   *  date (a manual purge, same idea as the recycle bin's 30-day
+   *  auto-purge but admin-triggered and with no retention floor). */
+  before?: string;
+}
+
+/**
+ * Permanently deletes audit log entries - either an explicit id
+ * selection or a bulk "everything on/before this date" purge. Unlike
+ * logAction() (which deliberately swallows its own errors so a logging
+ * failure never blocks the real action it's recording), this DOES
+ * surface errors: an admin explicitly asking to delete history should
+ * know if it didn't actually happen. Requires at least one of `ids` /
+ * `before` - an empty call would otherwise silently delete nothing,
+ * which could read as "it worked" when it didn't do what was asked.
+ */
+export async function deleteAuditLogs(
+  params: DeleteAuditLogsParams
+): Promise<{ success: boolean; count: number; error?: string }> {
+  if ((!params.ids || params.ids.length === 0) && !params.before) {
+    return { success: false, count: 0, error: 'Aucun critère de suppression fourni.' };
+  }
+
+  const supabase = createAdminClient();
+  let query = supabase.from('audit_logs').delete({ count: 'exact' });
+
+  if (params.ids && params.ids.length > 0) {
+    query = query.in('id', params.ids);
+  } else if (params.before) {
+    query = query.lte('created_at', `${params.before}T23:59:59.999Z`);
+  }
+
+  const { error, count } = await query;
+
+  if (error) {
+    console.error('Error deleting audit logs:', error);
+    return { success: false, count: 0, error: error.message };
+  }
+
+  return { success: true, count: count || 0 };
+}

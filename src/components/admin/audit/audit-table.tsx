@@ -9,6 +9,13 @@ import type { AuditLogEntry } from '@/hooks/use-audit-log';
 interface AuditTableProps {
   logs: AuditLogEntry[];
   loading: boolean;
+  /** Selection is optional so this table keeps working anywhere it's
+   *  used without deletion wired up. Pass all three together to enable
+   *  the checkbox column - see the Audit Log page for how it's wired to
+   *  a bulk "Supprimer la sélection" action. */
+  selectedIds?: string[];
+  onToggleSelect?: (id: string) => void;
+  onToggleSelectAll?: (ids: string[]) => void;
 }
 
 const ACTION_LABELS: Record<string, string> = {
@@ -46,7 +53,16 @@ function actionVariant(action: string): 'default' | 'destructive' | 'secondary' 
   return 'secondary';
 }
 
-export function AuditTable({ logs, loading }: AuditTableProps) {
+export function AuditTable({
+  logs,
+  loading,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+}: AuditTableProps) {
+  const selectionEnabled = Boolean(selectedIds && onToggleSelect && onToggleSelectAll);
+  const allOnPageSelected = selectionEnabled && logs.length > 0 && logs.every((l) => selectedIds!.includes(l.id));
+
   if (loading) {
     return (
       <div className="space-y-2">
@@ -72,6 +88,17 @@ export function AuditTable({ logs, loading }: AuditTableProps) {
       <table className="w-full text-sm">
         <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
           <tr>
+            {selectionEnabled && (
+              <th className="w-10 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={allOnPageSelected}
+                  onChange={() => onToggleSelectAll!(logs.map((l) => l.id))}
+                  aria-label="Tout sélectionner sur cette page"
+                  className="h-4 w-4 rounded border-input"
+                />
+              </th>
+            )}
             <th className="px-4 py-3 font-medium">Quand</th>
             <th className="px-4 py-3 font-medium">Utilisateur</th>
             <th className="px-4 py-3 font-medium">Action</th>
@@ -84,6 +111,17 @@ export function AuditTable({ logs, loading }: AuditTableProps) {
             const Icon = ENTITY_ICONS[entityType] || Activity;
             return (
               <tr key={log.id} className="hover:bg-muted/30">
+                {selectionEnabled && (
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds!.includes(log.id)}
+                      onChange={() => onToggleSelect!(log.id)}
+                      aria-label={`Sélectionner l'entrée du ${formatWhen(log.createdAt)}`}
+                      className="h-4 w-4 rounded border-input"
+                    />
+                  </td>
+                )}
                 <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                   {formatWhen(log.createdAt)}
                 </td>

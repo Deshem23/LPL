@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/use-toast';
 import { useAuditLog, fetchAllAuditLogs, type AuditLogEntry } from '@/hooks/use-audit-log';
 import {
   AuditFilters,
@@ -48,6 +49,8 @@ export default function AuditLogPage() {
   });
   const [page, setPage] = useState(1);
   const [users, setUsers] = useState<AuditFilterUser[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [deleting, setDeleting] = useState(false);
 
   // Full user list for the multi-user filter/export - not just whoever
   // happens to show up in the current page of logs.
@@ -67,7 +70,7 @@ export default function AuditLogPage() {
     };
   }, []);
 
-  const { logs, total, totalPages, loading, error } = useAuditLog({
+  const { logs, total, totalPages, loading, error, refresh } = useAuditLog({
     page,
     limit: 30,
     search: filters.search || undefined,
@@ -80,6 +83,58 @@ export default function AuditLogPage() {
   const handleFiltersChange = (value: AuditFiltersValue) => {
     setFilters(value);
     setPage(1);
+    setSelectedIds([]);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+  };
+
+  const toggleSelectAll = (idsOnPage: string[]) => {
+    const allSelected = idsOnPage.every((id) => selectedIds.includes(id));
+    setSelectedIds((prev) =>
+      allSelected ? prev.filter((id) => !idsOnPage.includes(id)) : [...new Set([...prev, ...idsOnPage])]
+    );
+  };
+
+  // Deletes exactly the selected entries. Irreversible - the audit trail
+  // has no recycle bin, unlike articles/media/users - so this confirms
+  // first, same pattern as the trash page's permanent-delete action.
+  // The deletion itself gets logged as a fresh 'audit.delete' entry (see
+  // the API route), so purging old history doesn't erase the fact that
+  // it happened.
+  const handleDeleteSelected = async () => {
+    if (selectedIds.length === 0) return;
+    if (
+      !confirm(
+        `Supprimer définitivement ${selectedIds.length} entrée${selectedIds.length !== 1 ? 's' : ''} du journal d'audit ? Cette action est irréversible.`
+      )
+    ) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/audit', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Une erreur est survenue.');
+
+      toast({ title: 'Supprimé', description: `${json.count ?? selectedIds.length} entrée(s) supprimée(s).` });
+      setSelectedIds([]);
+      refresh();
+    } catch (err: any) {
+      toast({
+        title: 'Erreur',
+        description: err?.message || 'Impossible de supprimer ces entrées.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Exports every entry matching the active filters, across every page -
@@ -116,13 +171,27 @@ export default function AuditLogPage() {
             création, modification et suppression d&apos;articles, de catégories et d&apos;utilisateurs.
           </p>
         </div>
-        <ExportButtons
-          title={exportTitle}
-          filename={`journal-audit-${new Date().toISOString().slice(0, 10)}`}
-          columns={AUDIT_EXPORT_COLUMNS}
-          getRows={getExportRows}
-          disabled={total === 0}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          {selectedIds.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              disabled={deleting}
+              onClick={handleDeleteSelected}
+            >
+              {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              Supprimer la sélection ({selectedIds.length})
+            </Button>
+          )}
+          <ExportButtons
+            title={exportTitle}
+            filename={`journal-audit-${new Date().toISOString().slice(0, 10)}`}
+            columns={AUDIT_EXPORT_COLUMNS}
+            getRows={getExportRows}
+            disabled={total === 0}
+          />
+        </div>
       </div>
 
       <AuditFilters value={filters} onChange={handleFiltersChange} users={users} />
@@ -130,7 +199,13 @@ export default function AuditLogPage() {
       {error ? (
         <p className="text-sm text-destructive">{error}</p>
       ) : (
-        <AuditTable logs={logs} loading={loading} />
+        <AuditTable
+          logs={logs}
+          loading={loading}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+          onToggleSelectAll={toggleSelectAll}
+        />
       )}
 
       {totalPages > 1 && (
