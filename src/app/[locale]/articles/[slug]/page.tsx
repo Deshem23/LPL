@@ -8,6 +8,7 @@
 import { notFound } from 'next/navigation';
 import { getArticle, mapDbArticle } from '@/lib/api/articles';
 import { getArticles as getArticlesFromDb } from '@/lib/services/article-service';
+import { getRelatedCategoryIds } from '@/lib/services/category-service';
 import { ArticleModal } from '@/components/articles/article-modal';
 
 // revalidate: 30 (was force-dynamic) - see [locale]/layout.tsx's own
@@ -32,18 +33,23 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
   }
 
   // "Related articles" for the modal, below the author card - other
-  // published articles with the same category_id as this one (whether
-  // that's a top-level category or a subcategory - article.category.id
-  // is already exactly the right id to filter on either way, see the
-  // category_id note in article-service.ts), current article excluded.
-  // Queried directly via article-service.ts's categoryIds filter instead
-  // of the deprecated slug-based `category` param some routes still use,
-  // and done here server-side so the modal itself doesn't need its own
-  // client-side fetch for it.
+  // published articles in the same SECTION as this one, current article
+  // excluded. Widened via getRelatedCategoryIds() rather than an exact
+  // category_id match: an article only ever has one category_id, so two
+  // articles that are both "about Technologie" but one is filed on the
+  // top-level "Technologie" category and the other on a "Technologie"
+  // subcategory would otherwise have different category_id values and
+  // never show up as related to each other - which is exactly the "I
+  // published a Technologie article and it's not showing as related"
+  // case this widening fixes. Queried directly via article-service.ts's
+  // categoryIds filter instead of the deprecated slug-based `category`
+  // param some routes still use, and done here server-side so the modal
+  // itself doesn't need its own client-side fetch for it.
   let relatedArticles: { id: string; title: string; slug: string; coverImage?: string; createdAt: string }[] = [];
   if (article.category?.id) {
+    const categoryIds = await getRelatedCategoryIds(article.category.id);
     const { articles: relatedRows } = await getArticlesFromDb({
-      categoryIds: [article.category.id],
+      categoryIds,
       status: 'published',
       limit: 5,
     });

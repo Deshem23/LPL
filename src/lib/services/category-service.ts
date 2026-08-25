@@ -289,6 +289,51 @@ export async function getCategoryWithChildIdsBySlug(
 }
 
 /**
+ * Widens a single category id (top-level OR subcategory) out to "every
+ * category id in the same section" - used for "related articles" so two
+ * articles both under e.g. Technologie cross-match regardless of
+ * whether either one is filed directly on the top-level category or on
+ * one of its subcategories. An article only ever has one category_id
+ * (see the note on Article.category_id in article-service.ts), so an
+ * exact-match filter alone misses this case entirely: an article on
+ * "Technologie" and one on "Technologie > Gadgets" have different
+ * category_id values even though they're clearly the same section.
+ *
+ * - Top-level category (parent_id null): returns [id, ...children].
+ * - Subcategory (parent_id set): returns [parentId, id, ...siblings] -
+ *   the whole parent section, not just this one subcategory, so e.g. a
+ *   "Gadgets" article still relates to a plain "Technologie" one.
+ *
+ * Returns just [categoryId] (never empty/throws) if the category row
+ * can't be found, so a caller's filter degrades to an exact match
+ * instead of breaking.
+ */
+export async function getRelatedCategoryIds(categoryId: string): Promise<string[]> {
+  const supabase = createAdminClient();
+
+  const { data: category, error } = await supabase
+    .from('categories')
+    .select('id, parent_id')
+    .eq('id', categoryId)
+    .single();
+
+  if (error || !category) {
+    return [categoryId];
+  }
+
+  const topLevelId = category.parent_id || category.id;
+
+  const { data: children } = await supabase
+    .from('categories')
+    .select('id')
+    .eq('parent_id', topLevelId)
+    .eq('is_active', true);
+
+  const ids = new Set<string>([topLevelId, categoryId, ...(children || []).map((c: { id: string }) => c.id)]);
+  return Array.from(ids);
+}
+
+/**
  * Resolves a subcategory by its slug AND its parent category's slug (so
  * two different parents can each have a subcategory with the same slug
  * without colliding). Returns null if not found (→ empty state).
