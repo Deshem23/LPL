@@ -14,6 +14,7 @@ export const permissions = {
     canManageCategories: true,
     canViewAnalytics: true,
     canManageSettings: true,
+    canManageTrash: true,
   },
   editor: {
     canCreateUser: false,
@@ -28,6 +29,7 @@ export const permissions = {
     canManageCategories: true,
     canViewAnalytics: true,
     canManageSettings: false,
+    canManageTrash: false,
   },
   writer: {
     canCreateUser: false,
@@ -42,6 +44,7 @@ export const permissions = {
     canManageCategories: false,
     canViewAnalytics: false,
     canManageSettings: false,
+    canManageTrash: false,
   },
   contributor: {
     canCreateUser: false,
@@ -56,6 +59,7 @@ export const permissions = {
     canManageCategories: false,
     canViewAnalytics: false,
     canManageSettings: false,
+    canManageTrash: false,
   },
 };
 

@@ -25,7 +25,8 @@ import {
   Upload,
   History,
   ClipboardList,
-  ExternalLink
+  ExternalLink,
+  Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -65,6 +66,7 @@ const getNavItems = (role: string) => {
       { name: 'Statistiques', href: '/lpl-access-2026/panel/analytics', icon: BarChart3 },
       { name: "Journal d'audit", href: '/lpl-access-2026/panel/audit-log', icon: History },
       { name: 'Rapports', href: '/lpl-access-2026/panel/reports', icon: ClipboardList },
+      { name: 'Corbeille', href: '/lpl-access-2026/panel/trash', icon: Trash2 },
       { name: 'Paramètres', href: '/lpl-access-2026/panel/settings', icon: Settings },
     ];
   }

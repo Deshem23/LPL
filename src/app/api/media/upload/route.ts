@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getCurrentUser } from '@/lib/auth/actions';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { logAction } from '@/lib/services/audit-service';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -76,6 +76,31 @@ export async function POST(request: NextRequest) {
     const failures: string[] = [];
 
     for (const file of files) {
+      // Hash the file's actual bytes (not its name - two different
+      // filenames can be the exact same image, e.g. a re-download or a
+      // re-export) so an identical re-upload can be detected and reused
+      // instead of creating a duplicate file + row every time (per the
+      // admin's "i dont want to have the same media duplicated" request).
+      const fileBuffer = Buffer.from(await file.arrayBuffer());
+      const contentHash = createHash('sha256').update(fileBuffer).digest('hex');
+
+      // Only matches against media that's still actually in use - see
+      // the partial unique index on media.content_hash in
+      // migrations/20_recycle_bin_and_media_dedup.sql. A file whose only
+      // prior copy has since been trashed is treated as new, so it can
+      // be uploaded (and restored into active use) again cleanly.
+      const { data: existingMedia } = await supabase
+        .from('media')
+        .select('*')
+        .eq('content_hash', contentHash)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (existingMedia) {
+        uploadedMedia.push(existingMedia);
+        continue;
+      }
+
       const fileExt = file.name.split('.').pop();
       const fileName = `${randomUUID()}.${fileExt}`;
       const filePath = `media/${type}/${fileName}`;
@@ -83,7 +108,7 @@ export async function POST(request: NextRequest) {
       // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('media')
-        .upload(filePath, file);
+        .upload(filePath, fileBuffer, { contentType: file.type });
 
       if (uploadError) {
         console.error('Upload error:', uploadError);
@@ -107,6 +132,7 @@ export async function POST(request: NextRequest) {
           file_name: file.name,
           file_size: file.size,
           mime_type: file.type,
+          content_hash: contentHash,
         })
         .select()
         .single();

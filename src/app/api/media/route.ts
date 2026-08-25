@@ -32,6 +32,10 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('media')
       .select('*', { count: 'exact' })
+      // Excludes trashed media (see the DELETE handler in
+      // [id]/route.ts) from the Media Library - trashed items are only
+      // ever returned by the trash listing.
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 

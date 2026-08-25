@@ -59,12 +59,22 @@ export async function loginWithEmail(email: string, password: string) {
   try {
     const { data: profile, error: profileError } = await supabase
       .from('users')
-      .select('role, must_change_password')
+      .select('role, must_change_password, deleted_at')
       .eq('id', data.user.id)
       .single();
 
     if (profileError) {
       console.error('loginWithEmail: profile lookup failed for', data.user.id, profileError);
+    }
+
+    // Trashed account (see deleteUser() in user-service.ts) - the
+    // password check above already established a real Supabase session,
+    // so that has to be explicitly torn back down here; otherwise a
+    // deleted user would still hold a valid session cookie even though
+    // signInWithPassword's own check is the only gate that ran.
+    if (profile?.deleted_at) {
+      await supabase.auth.signOut().catch(() => {});
+      return { error: 'Ce compte a été supprimé.' };
     }
 
     role = profile?.role || data.user.user_metadata?.role || 'contributor';
@@ -224,9 +234,20 @@ export async function getCurrentUserWithRole() {
 
   const { data: profile } = await supabase
     .from('users')
-    .select('role')
+    .select('role, deleted_at')
     .eq('id', user.id)
     .single();
+
+  // A trashed account (see deleteUser() in user-service.ts) shouldn't be
+  // treated as authenticated anywhere in the app, even if it's still
+  // holding a valid session from before it was deleted - every route
+  // guarded by requireAuth()/requirePermission() (require-permission.ts)
+  // goes through this function, so this one check is what actually
+  // revokes access immediately instead of only on their next login
+  // attempt (see the matching check in loginWithEmail()).
+  if (profile?.deleted_at) {
+    return null;
+  }
 
   const role = profile?.role || user.user_metadata?.role || 'contributor';
 

@@ -19,16 +19,21 @@ export interface User {
    *  dashboard. Self-registered and Google OAuth accounts never set this. */
   must_change_password?: boolean;
   created_at?: string;
+  /** Set when this user is in the trash (see deleteUser()/restoreUser()
+   *  below) - null/absent means active. Every normal getter below filters
+   *  this out; only getTrashedUsers() returns rows where it's set. */
+  deleted_at?: string | null;
 }
 
 export async function getAllUsers(): Promise<User[]> {
   const supabase = createAdminClient();
-  
+
   console.log('🔍 Fetching all users from Supabase...');
-  
+
   const { data, error } = await supabase
     .from('users')
     .select('id, email, name, role, status, avatar_url, bio, role_title, twitter, linkedin, website, must_change_password, created_at')
+    .is('deleted_at', null)
     .order('name', { ascending: true });
 
   if (error) {
@@ -37,6 +42,24 @@ export async function getAllUsers(): Promise<User[]> {
   }
 
   console.log(`✅ Found ${data?.length || 0} users`);
+  return data || [];
+}
+
+/** Users currently in the trash (deleted_at set), newest-deleted first. */
+export async function getTrashedUsers(): Promise<User[]> {
+  const supabase = createAdminClient();
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, email, name, role, status, avatar_url, created_at, deleted_at')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
+
+  if (error) {
+    console.error('❌ Error fetching trashed users:', error);
+    return [];
+  }
+
   return data || [];
 }
 
@@ -135,11 +158,12 @@ export async function getAuthorProfile(id: string): Promise<PublicAuthorProfile 
 
 export async function getActiveUsers(): Promise<User[]> {
   const supabase = createAdminClient();
-  
+
   const { data, error } = await supabase
     .from('users')
     .select('id, email, name, role, status, avatar_url, bio')
     .eq('status', 'active')
+    .is('deleted_at', null)
     .order('name', { ascending: true });
 
   if (error) {
@@ -401,31 +425,80 @@ export async function updateUserRole(userId: string, role: string): Promise<{ su
   }
 }
 
+/**
+ * Move a user to the trash - sets deleted_at instead of removing the row,
+ * so getAllUsers() (and everywhere else that lists users) stops showing
+ * them immediately, while getTrashedUsers() can still find them for
+ * restoreUser() or an explicit permanentlyDeleteUser() call. Auto-purged
+ * after 30 days by purgeExpiredTrash() (see recycle-bin-service.ts).
+ *
+ * Deliberately does NOT touch the Supabase Auth account (unlike the old
+ * version of this function) - restoreUser() needs that account to still
+ * exist to give the user their access back. It's only removed at
+ * permanentlyDeleteUser() time, whether triggered by an admin from the
+ * trash view or by the 30-day auto-purge.
+ */
 export async function deleteUser(userId: string): Promise<{ success: boolean; error?: string }> {
-  console.log(`🗑️ Deleting user ${userId}`);
+  console.log(`🗑️ Moving user to trash: ${userId}`);
 
   try {
     const supabase = createAdminClient();
 
     const { error } = await supabase
       .from('users')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .eq('id', userId);
 
+    if (error) {
+      console.error('❌ Error trashing user:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log(`✅ User moved to trash: ${userId}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error('❌ Unexpected error trashing user:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/** Restore a trashed user - clears deleted_at, nothing else changes. */
+export async function restoreUser(userId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = createAdminClient();
+    const { error } = await supabase.from('users').update({ deleted_at: null }).eq('id', userId);
+    if (error) {
+      console.error('❌ Error restoring user:', error);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (error: any) {
+    console.error('❌ Unexpected error restoring user:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * The real, unrecoverable delete - only ever called from the trash view
+ * (an admin emptying it, or purgeExpiredTrash() after 30 days), never
+ * from the main Users page directly anymore. Removes both the
+ * public.users row AND the actual Supabase Auth account - see the
+ * comment this function's logic came from in the old deleteUser() above:
+ * leaving the auth account behind is what let a re-added email fail with
+ * "User already registered" while showing nowhere in the list.
+ */
+export async function permanentlyDeleteUser(userId: string): Promise<{ success: boolean; error?: string }> {
+  console.log(`🗑️ Permanently deleting user ${userId}`);
+
+  try {
+    const supabase = createAdminClient();
+
+    const { error } = await supabase.from('users').delete().eq('id', userId);
     if (error) {
       console.error('❌ Error deleting user:', error);
       return { success: false, error: error.message };
     }
 
-    // This only removed the public.users profile row above - the actual
-    // Supabase Auth account (auth.users) survived untouched, since that
-    // requires this separate admin API call, not a delete on the `users`
-    // table. Left unfixed, a "deleted" user vanished from getAllUsers()
-    // (which only reads public.users) while their login/email was still
-    // fully registered in Supabase Auth - so they silently disappeared
-    // from the admin list, yet re-adding that same email later failed
-    // with "User already registered" (createUser()'s supabase.auth.signUp()
-    // call, from a ghost account nothing in this UI could see or remove).
     const { error: authError } = await supabase.auth.admin.deleteUser(userId);
     if (authError) {
       console.error('⚠️ Profile deleted but auth account removal failed:', authError);
@@ -435,7 +508,7 @@ export async function deleteUser(userId: string): Promise<{ success: boolean; er
       };
     }
 
-    console.log(`✅ User deleted: ${userId}`);
+    console.log(`✅ User permanently deleted: ${userId}`);
     return { success: true };
   } catch (error: any) {
     console.error('❌ Unexpected error deleting user:', error);

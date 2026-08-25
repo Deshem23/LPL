@@ -29,6 +29,7 @@ export interface Article {
   tags?: string[];
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
 
   author?: {
     id: string;
@@ -195,6 +196,12 @@ export async function getArticles(params: {
       )
     `, { count: 'exact' });
 
+  // Excludes trashed articles (see deleteArticle()/restoreArticle() below)
+  // from every normal listing - the admin list, the homepage, category
+  // pages, the sitemap, all of it. Trashed articles are only ever
+  // returned by getTrashedArticles().
+  query = query.is('deleted_at', null);
+
   // Apply status filter - FIXED!
   if (params.status && params.status !== 'all') {
     console.log(`📊 Filtering by status: ${params.status}`);
@@ -284,6 +291,7 @@ export async function getArticleById(id: string): Promise<Article | null> {
       )
     `)
     .eq('id', id)
+    .is('deleted_at', null)
     .single();
 
   if (error) {
@@ -322,6 +330,7 @@ export async function getArticleBySlug(slug: string): Promise<Article | null> {
       )
     `)
     .eq('slug', slug)
+    .is('deleted_at', null)
     .single();
 
   if (error) {
@@ -489,23 +498,100 @@ export async function updateArticle(id: string, data: Partial<CreateArticleData>
   return { success: true, article };
 }
 
+// Soft delete - moves the article to the trash (see migrations/20_recycle_bin_and_media_dedup.sql)
+// instead of removing the row. Every normal read path above filters
+// `.is('deleted_at', null)`, so a trashed article immediately disappears
+// from the admin list, the homepage, category pages, the sitemap, etc.,
+// while still existing in the DB until it's restored or the 30-day
+// auto-purge (see purgeExpiredTrash() below) permanently removes it.
 export async function deleteArticle(id: string): Promise<{ success: boolean; error?: string }> {
   const supabase = createAdminClient();
-  
-  console.log('🗑️ Deleting article:', id);
-  
+
+  console.log('🗑️ Moving article to trash:', id);
+
+  const { error } = await supabase
+    .from('articles')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id);
+
+  if (error) {
+    console.error('❌ Error trashing article:', error);
+    return { success: false, error: error.message };
+  }
+
+  console.log('✅ Article moved to trash:', id);
+  return { success: true };
+}
+
+export async function restoreArticle(id: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = createAdminClient();
+
+  console.log('♻️ Restoring article from trash:', id);
+
+  const { error } = await supabase
+    .from('articles')
+    .update({ deleted_at: null })
+    .eq('id', id);
+
+  if (error) {
+    console.error('❌ Error restoring article:', error);
+    return { success: false, error: error.message };
+  }
+
+  console.log('✅ Article restored:', id);
+  return { success: true };
+}
+
+// The real, irreversible DELETE - only ever reached from the trash view
+// (an explicit "Delete permanently" action) or from purgeExpiredTrash()
+// below once an item has been trashed for 30+ days.
+export async function permanentlyDeleteArticle(id: string): Promise<{ success: boolean; error?: string }> {
+  const supabase = createAdminClient();
+
+  console.log('🗑️ Permanently deleting article:', id);
+
   const { error } = await supabase
     .from('articles')
     .delete()
     .eq('id', id);
 
   if (error) {
-    console.error('❌ Error deleting article:', error);
+    console.error('❌ Error permanently deleting article:', error);
     return { success: false, error: error.message };
   }
 
-  console.log('✅ Article deleted:', id);
+  console.log('✅ Article permanently deleted:', id);
   return { success: true };
+}
+
+export async function getTrashedArticles(): Promise<Article[]> {
+  const supabase = createAdminClient();
+
+  const { data, error } = await supabase
+    .from('articles')
+    .select(`
+      *,
+      author:author_id (
+        id,
+        name,
+        email,
+        avatar_url
+      ),
+      category:category_id (
+        id,
+        name,
+        slug
+      )
+    `)
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
+
+  if (error) {
+    console.error('❌ Error fetching trashed articles:', error);
+    return [];
+  }
+
+  return data || [];
 }
 
 export async function incrementViewCount(id: string): Promise<void> {
@@ -549,6 +635,7 @@ export async function getTrendingArticles(limit: number = 5): Promise<Article[]>
     `)
     .eq('is_trending', true)
     .eq('status', 'published')
+    .is('deleted_at', null)
     .order('view_count', { ascending: false })
     .limit(limit);
 
@@ -586,6 +673,7 @@ export async function getFeaturedArticles(limit: number = 6): Promise<Article[]>
     `)
     .eq('is_featured', true)
     .eq('status', 'published')
+    .is('deleted_at', null)
     .order('published_at', { ascending: false })
     .limit(limit);
 
@@ -623,6 +711,7 @@ export async function getBreakingArticles(limit: number = 5): Promise<Article[]>
     `)
     .eq('is_breaking', true)
     .eq('status', 'published')
+    .is('deleted_at', null)
     .order('published_at', { ascending: false })
     .limit(limit);
 
@@ -650,6 +739,7 @@ export async function getArticlesByAuthor(authorId: string, limit: number = 10):
     `)
     .eq('author_id', authorId)
     .eq('status', 'published')
+    .is('deleted_at', null)
     .order('published_at', { ascending: false })
     .limit(limit);
 
@@ -687,6 +777,7 @@ export async function getPinnedArticles(limit: number = 4): Promise<Article[]> {
     `)
     .eq('is_pinned', true)
     .eq('status', 'published')
+    .is('deleted_at', null)
     .order('published_at', { ascending: false })
     .limit(limit);
 
@@ -724,6 +815,7 @@ export async function getSuggestedArticles(limit: number = 6): Promise<Article[]
     `)
     .eq('is_suggestion', true)
     .eq('status', 'published')
+    .is('deleted_at', null)
     .order('published_at', { ascending: false })
     .limit(limit);
 
@@ -761,6 +853,7 @@ export async function getRelatedArticles(articleId: string, categoryId: string, 
     `)
     .eq('category_id', categoryId)
     .eq('status', 'published')
+    .is('deleted_at', null)
     .neq('id', articleId)
     .order('published_at', { ascending: false })
     .limit(limit);

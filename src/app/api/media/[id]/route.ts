@@ -90,38 +90,24 @@ export async function DELETE(
 
     const supabase = createAdminClient();
 
-    // Look up the row first so the underlying storage file can be
-    // cleaned up too - not just the database row - otherwise every
-    // delete leaves an orphaned file sitting in the "media" bucket.
-    const { data: existing } = await supabase
+    // Soft delete only - moves the item to the trash (see
+    // migrations/20_recycle_bin_and_media_dedup.sql) instead of removing
+    // the row and the underlying storage file. The item disappears from
+    // the Media Library immediately (GET above filters
+    // `.is('deleted_at', null)`) but the actual file stays in Storage,
+    // untouched, until it's restored, permanently deleted from the trash
+    // view, or the 30-day auto-purge reaches it - at which point the
+    // real DELETE + storage cleanup happens (see permanentlyDeleteMedia
+    // in trash-service.ts).
+    const { data: existing, error } = await supabase
       .from('media')
-      .select('url')
+      .update({ deleted_at: new Date().toISOString() })
       .eq('id', params.id)
+      .select('url')
       .single();
 
-    const { error } = await supabase.from('media').delete().eq('id', params.id);
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    if (existing?.url) {
-      // Public Supabase Storage URLs look like
-      // ".../storage/v1/object/public/media/<path>" - pull <path> back
-      // out to remove the actual file. Best-effort: the DB row is
-      // already gone (that's what makes it disappear from the admin
-      // grid), so a storage cleanup failure here shouldn't fail the
-      // whole delete.
-      const marker = '/object/public/media/';
-      const idx = existing.url.indexOf(marker);
-      if (idx !== -1) {
-        const filePath = existing.url.slice(idx + marker.length);
-        try {
-          await supabase.storage.from('media').remove([filePath]);
-        } catch {
-          // Non-fatal - the DB row (what the admin grid reflects) is
-          // already gone either way.
-        }
-      }
     }
 
     logAction({

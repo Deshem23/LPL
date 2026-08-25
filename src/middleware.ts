@@ -159,6 +159,7 @@ function getAllowedRolesForPath(pathname: string): string[] | null {
     '/lpl-access-2026/panel/categories': ['admin'],
     '/lpl-access-2026/panel/audit-log': ['admin'],
     '/lpl-access-2026/panel/reports': ['admin'],
+    '/lpl-access-2026/panel/trash': ['admin'],
     '/lpl-access-2026/panel/ads': ['admin', 'editor'],
     '/lpl-access-2026/panel/analytics': ['admin', 'editor', 'writer'],
     '/lpl-access-2026/panel/editor': ['admin', 'editor'],
@@ -329,9 +330,22 @@ export async function middleware(request: NextRequest) {
     // fresh login/token refresh.
     const { data: profile } = await supabase
       .from('users')
-      .select('role, must_change_password')
+      .select('role, must_change_password, deleted_at')
       .eq('id', user.id)
       .single();
+
+    // A trashed account (see deleteUser() in user-service.ts) shouldn't
+    // keep reaching admin pages just because its session cookie is still
+    // valid - same check as getCurrentUserWithRole() (actions.ts), which
+    // covers API routes; this is what covers a page load that doesn't go
+    // through one of those. supabase.auth.signOut() also clears the
+    // now-invalid session cookie instead of leaving it to keep failing
+    // this check on every subsequent request.
+    if (profile?.deleted_at) {
+      await supabase.auth.signOut();
+      const loginUrl = new URL('/lpl-access-2026', request.url);
+      return redirectWithCookies(loginUrl);
+    }
 
     if (profile?.must_change_password) {
       return redirectWithCookies(new URL('/complete-profile', request.url));

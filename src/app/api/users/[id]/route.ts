@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { updateUser } from '@/lib/services/user-service';
+import { updateUser, deleteUser } from '@/lib/services/user-service';
 import { logAction } from '@/lib/services/audit-service';
 import { requirePermission } from '@/lib/auth/require-permission';
 
@@ -101,6 +101,18 @@ export async function DELETE(
     if (auth instanceof NextResponse) return auth;
     const actor = auth.user;
 
+    // Deleting your own account here would immediately sign you out
+    // mid-request (getCurrentUserWithRole() in actions.ts treats a
+    // trashed account as unauthenticated) - the account can still be
+    // deleted from the Trash view by a *different* admin if that's
+    // really the intent, just not by itself.
+    if (params.id === actor.id) {
+      return NextResponse.json(
+        { error: 'Vous ne pouvez pas supprimer votre propre compte.' },
+        { status: 400 }
+      );
+    }
+
     const supabase = createAdminClient();
 
     const { data: existing } = await supabase
@@ -109,13 +121,16 @@ export async function DELETE(
       .eq('id', params.id)
       .single();
 
-    const { error } = await supabase
-      .from('users')
-      .delete()
-      .eq('id', params.id);
+    // Soft delete - moves the user to the trash (see
+    // migrations/20_recycle_bin_and_media_dedup.sql /
+    // recycle-bin-service.ts) instead of removing the row outright. This
+    // used to DELETE the row directly here, bypassing deleteUser()'s
+    // trash logic entirely - restorable from the trash view for 30 days
+    // instead of being gone the instant "Supprimer" was clicked.
+    const result = await deleteUser(params.id);
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: 500 });
     }
 
     logAction({
