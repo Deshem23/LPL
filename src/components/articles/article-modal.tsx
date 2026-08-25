@@ -89,8 +89,32 @@ export function ArticleModal({ article, onClose, locale, relatedArticles = [] }:
 
           {/* Article Content */}
           <article className="max-w-full">
-            {/* Header */}
-            <header className="space-y-4">
+            {/* Cover Image - a plain, well-proportioned block, sized by
+                aspect ratio (16:9) instead of a tall fixed pixel height,
+                so it scales cleanly with the modal's own width instead
+                of ever looking oversized relative to the text below it.
+                Comes first, ahead of the title/description/meta, per
+                request - image, then everything about the article,
+                then its body. Not sticky/pinned - see the modal's git
+                history if that's ever wanted back; it turned into a
+                whole saga of cross-browser stacking/transform/backdrop-
+                filter bugs for a fairly small visual payoff. */}
+            {article.featured_image || article.coverImage ? (
+              <div className="relative aspect-video w-full overflow-hidden rounded-lg shadow-lg">
+                <Image
+                  src={article.featured_image || article.coverImage}
+                  alt={article.title || 'Article'}
+                  fill
+                  sizes="(min-width: 768px) 896px, 100vw"
+                  priority
+                  className="object-cover"
+                />
+              </div>
+            ) : null}
+
+            {/* Header - title, description, author/date/reading-time/
+                views - now below the image instead of above it. */}
+            <header className="mt-6 space-y-4">
               <h1 className="text-2xl font-bold md:text-3xl">{article.title || 'Article'}</h1>
               <p className="text-lg text-muted-foreground">{article.excerpt || ''}</p>
 
@@ -117,25 +141,6 @@ export function ArticleModal({ article, onClose, locale, relatedArticles = [] }:
                 </span>
               </div>
             </header>
-
-            {/* Cover Image - a plain, non-sticky block that scrolls with
-                the rest of the article. This modal previously pinned it
-                in place with position: sticky while the rest of the
-                content scrolled underneath, but that turned into a whole
-                saga of cross-browser stacking/transform/backdrop-filter
-                bugs for a fairly small visual payoff - simpler wins here. */}
-            {article.featured_image || article.coverImage ? (
-              <div className="mt-6 h-[280px] w-full overflow-hidden rounded-lg shadow-lg">
-                <Image
-                  src={article.featured_image || article.coverImage}
-                  alt={article.title || 'Article'}
-                  fill
-                  sizes="(min-width: 768px) 720px, 100vw"
-                  priority
-                  className="object-cover"
-                />
-              </div>
-            ) : null}
 
             {/* Content - Tailwind Typography's `prose` sets its base
                 line-height (1.75) on the .prose container itself, not
