@@ -11,13 +11,26 @@ import { ArticleTags } from '@/components/articles/article-tags';
 import { AuthorBio } from '@/components/articles/author-bio';
 import { useRouter } from 'next/navigation';
 
+interface RelatedArticle {
+  id: string;
+  title: string;
+  slug: string;
+  coverImage?: string;
+  createdAt: string;
+}
+
 interface ArticleModalProps {
   article: any;
   onClose?: () => void;
   locale: string;
+  /** Same-category articles (current one excluded), fetched server-side by
+   *  the page - see src/app/[locale]/articles/[slug]/page.tsx. Kept
+   *  optional/defaulted to [] so this component doesn't break if it's ever
+   *  reused somewhere that doesn't pass this yet. */
+  relatedArticles?: RelatedArticle[];
 }
 
-export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
+export function ArticleModal({ article, onClose, locale, relatedArticles = [] }: ArticleModalProps) {
   const [isVisible, setIsVisible] = useState(false);
   const router = useRouter();
 
@@ -78,7 +91,7 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
           <article className="max-w-full">
             {/* Header */}
             <header className="space-y-4">
-              <h1 className="text-3xl font-bold md:text-4xl">{article.title || 'Article'}</h1>
+              <h1 className="text-2xl font-bold md:text-3xl">{article.title || 'Article'}</h1>
               <p className="text-lg text-muted-foreground">{article.excerpt || ''}</p>
 
               <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
@@ -105,18 +118,14 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
               </div>
             </header>
 
-            {/* Cover Image - sticky so it stays pinned in view once
-                scrolling reaches it, while the header above scrolls away
-                and the content below keeps scrolling past it. position:
-                sticky needs a scrollable ancestor to stick within, which
-                is the modal's own overflow-y-auto box below - it unsticks
-                naturally once the end of this <article> is reached, since
-                nothing constrains an earlier unstick point. z-10 keeps it
-                above the content flowing past underneath during that
-                transition; shadow-lg gives it a visible edge against the
-                content once pinned, instead of a hard flat cutoff. */}
+            {/* Cover Image - a plain, non-sticky block that scrolls with
+                the rest of the article. This modal previously pinned it
+                in place with position: sticky while the rest of the
+                content scrolled underneath, but that turned into a whole
+                saga of cross-browser stacking/transform/backdrop-filter
+                bugs for a fairly small visual payoff - simpler wins here. */}
             {article.featured_image || article.coverImage ? (
-              <div className="sticky top-0 z-10 mt-6 h-[280px] w-full overflow-hidden rounded-lg shadow-lg">
+              <div className="mt-6 h-[280px] w-full overflow-hidden rounded-lg shadow-lg">
                 <Image
                   src={article.featured_image || article.coverImage}
                   alt={article.title || 'Article'}
@@ -168,6 +177,46 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
                   }}
                   locale={locale}
                 />
+              </div>
+            )}
+
+            {/* Related Articles - other published articles from the same
+                category, fetched server-side (see
+                src/app/[locale]/articles/[slug]/page.tsx) so this stays
+                a plain prop instead of a client-side fetch. Placed below
+                the author card per request. */}
+            {relatedArticles.length > 0 && (
+              <div className="mt-8 border-t pt-6">
+                <h3 className="mb-4 text-lg font-semibold">Articles similaires</h3>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  {relatedArticles.map((related) => (
+                    <Link
+                      key={related.id}
+                      href={`/${locale}/articles/${related.slug}`}
+                      className="group block"
+                    >
+                      <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-muted">
+                        {related.coverImage ? (
+                          <Image
+                            src={related.coverImage}
+                            alt={related.title}
+                            fill
+                            className="object-cover transition-transform duration-300 group-hover:scale-105"
+                            sizes="(min-width: 640px) 33vw, 100vw"
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center bg-muted">
+                            <span className="text-2xl">📄</span>
+                          </div>
+                        )}
+                      </div>
+                      <h4 className="mt-2 line-clamp-2 text-sm font-medium group-hover:text-primary">
+                        {related.title}
+                      </h4>
+                      <p className="mt-1 text-xs text-muted-foreground">{formatDate(related.createdAt)}</p>
+                    </Link>
+                  ))}
+                </div>
               </div>
             )}
 

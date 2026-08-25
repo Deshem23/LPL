@@ -86,7 +86,7 @@ export function HeroSection({ locale, articles }: HeroSectionProps) {
                     {slide.category.name}
                   </span>
                 )}
-                <h2 className="mt-2 sm:mt-3 text-lg sm:text-2xl md:text-3xl lg:text-4xl font-bold text-white leading-tight line-clamp-2 sm:line-clamp-none">
+                <h2 className="mt-2 sm:mt-3 text-base sm:text-xl md:text-2xl lg:text-3xl font-bold text-white leading-tight line-clamp-2 sm:line-clamp-none">
                   {slide.title}
                 </h2>
                 {slide.excerpt && (

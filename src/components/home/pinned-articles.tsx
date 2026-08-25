@@ -44,10 +44,18 @@ export async function PinnedArticles({ locale, articles: articlesProp }: PinnedA
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      {/* Main Featured Article */}
+      {/* Main Featured Article - image on top, caption below it (same
+          layout family as the side cards) instead of the title overlaid
+          directly on the photo. The overlaid version made the title -
+          at up to text-4xl, wrapping to 2-3 lines on a narrow phone -
+          cover most of the actual image in the responsive layout; a
+          smaller title below a full, unobstructed image reads better
+          and matches the side cards' own visual language. Author name
+          dropped from the meta row per request - date + reading time is
+          enough here, the byline is one click away on the article. */}
       <Link
         href={`/${locale}/articles/${mainArticle.slug}`}
-        className="group relative overflow-hidden rounded-xl lg:col-span-2"
+        className="group block overflow-hidden rounded-xl border lg:col-span-2"
       >
         <div className="relative aspect-video w-full overflow-hidden bg-muted">
           {mainArticle.coverImage ? (
@@ -63,25 +71,18 @@ export async function PinnedArticles({ locale, articles: articlesProp }: PinnedA
               <span className="text-4xl font-bold text-muted-foreground">📰</span>
             </div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-          
-          <div className="absolute bottom-0 p-6 text-white sm:p-8">
-            <Badge variant="secondary" className="mb-3 bg-primary text-white">
-              À la une
-            </Badge>
-            {/* Excerpt removed - on top of the title, it filled enough of
-                the image that on mobile the two together covered nearly
-                the whole card, leaving barely any actual photo visible.
-                The title alone is what a "À la une" card needs to work;
-                the excerpt is one click away on the article itself. */}
-            <h2 className="text-2xl font-bold sm:text-3xl lg:text-4xl">
-              {mainArticle.title}
-            </h2>
-            <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-white/70 sm:text-sm">
-              <span>{mainArticle.author.name}</span>
-              <span>{formatDate(mainArticle.createdAt)}</span>
-              <span>{getReadingTime(mainArticle.content)} min</span>
-            </div>
+          <Badge variant="secondary" className="absolute left-4 top-4 bg-primary text-white">
+            À la une
+          </Badge>
+        </div>
+
+        <div className="p-4 sm:p-6">
+          <h2 className="text-xl font-bold sm:text-2xl">
+            {mainArticle.title}
+          </h2>
+          <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground sm:text-sm">
+            <span>{formatDate(mainArticle.createdAt)}</span>
+            <span>{getReadingTime(mainArticle.content)} min</span>
           </div>
         </div>
       </Link>

@@ -25,7 +25,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Eye, FileText, Users, Activity } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Eye, FileText, Users, Activity, Archive, PenLine, Clock, FolderOpen, Image as ImageIcon, Trash2 } from 'lucide-react';
 
 interface TimeSeriesPoint {
   label: string;
@@ -57,6 +58,18 @@ interface AnalyticsData {
     totalArticles: number;
     totalAuthors: number;
     avgViewsPerArticle: number;
+    draftArticles: number;
+    reviewArticles: number;
+    scheduledArticles: number;
+    archivedArticles: number;
+    totalCategories: number;
+    totalMedia: number;
+    trash: {
+      articles: number;
+      media: number;
+      users: number;
+      total: number;
+    };
   };
   timeSeries: TimeSeriesPoint[];
   categoryBreakdown: CategoryBreakdown[];
@@ -181,6 +194,70 @@ export default function AdminAnalyticsPage() {
           value={overview.avgViewsPerArticle.toLocaleString('fr-FR')}
           subtitle="parmi les articles publiés"
           icon={<Activity className="h-4 w-4 text-primary" />}
+        />
+      </div>
+
+      {/* Content pipeline - what's NOT published yet, which the top row
+          above never showed at all (it only ever contrasted "published"
+          against "total"). Archivés and the recycle bin both used to be
+          invisible from this page even though the data already existed
+          elsewhere in the admin (article status filter, /admin/trash). */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Brouillons"
+          value={overview.draftArticles.toLocaleString('fr-FR')}
+          subtitle="non soumis"
+          icon={<PenLine className="h-4 w-4 text-primary" />}
+        />
+        <StatCard
+          title="En révision"
+          value={overview.reviewArticles.toLocaleString('fr-FR')}
+          subtitle="en attente de validation"
+          icon={<Clock className="h-4 w-4 text-primary" />}
+        />
+        <StatCard
+          title="Programmés"
+          value={overview.scheduledArticles.toLocaleString('fr-FR')}
+          subtitle="publication à venir"
+          icon={<Clock className="h-4 w-4 text-primary" />}
+        />
+        <StatCard
+          title="Archivés"
+          value={overview.archivedArticles.toLocaleString('fr-FR')}
+          subtitle="retirés de la publication"
+          icon={<Archive className="h-4 w-4 text-primary" />}
+        />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Corbeille</CardTitle>
+            <div className="h-8 w-8 rounded-full bg-destructive/10 flex items-center justify-center">
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{overview.trash.total.toLocaleString('fr-FR')}</div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge variant="outline" className="text-[10px]">{overview.trash.articles} article{overview.trash.articles !== 1 ? 's' : ''}</Badge>
+              <Badge variant="outline" className="text-[10px]">{overview.trash.media} média{overview.trash.media !== 1 ? 's' : ''}</Badge>
+              <Badge variant="outline" className="text-[10px]">{overview.trash.users} utilisateur{overview.trash.users !== 1 ? 's' : ''}</Badge>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">en attente de suppression définitive (30 jours)</p>
+          </CardContent>
+        </Card>
+        <StatCard
+          title="Catégories"
+          value={overview.totalCategories.toLocaleString('fr-FR')}
+          subtitle="sections principales"
+          icon={<FolderOpen className="h-4 w-4 text-primary" />}
+        />
+        <StatCard
+          title="Médias"
+          value={overview.totalMedia.toLocaleString('fr-FR')}
+          subtitle="fichiers dans la bibliothèque"
+          icon={<ImageIcon className="h-4 w-4 text-primary" />}
         />
       </div>
 

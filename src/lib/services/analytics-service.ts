@@ -14,6 +14,26 @@ export interface AnalyticsOverview {
   totalArticles: number;
   totalAuthors: number;
   avgViewsPerArticle: number;
+  /** Non-published article statuses, broken out - previously only
+   *  "published / total" was visible here, so an admin had no way to
+   *  see how much content was archived, still in review, etc. without
+   *  leaving this page. */
+  draftArticles: number;
+  reviewArticles: number;
+  scheduledArticles: number;
+  archivedArticles: number;
+  totalCategories: number;
+  totalMedia: number;
+  /** Items currently sitting in the recycle bin (soft-deleted, pending
+   *  the 30-day auto-purge - see recycle-bin-service.ts), broken down by
+   *  type so "deleted articles" specifically is visible, not just a
+   *  combined count. */
+  trash: {
+    articles: number;
+    media: number;
+    users: number;
+    total: number;
+  };
 }
 
 export interface TimeSeriesPoint {
@@ -54,16 +74,54 @@ const MONTH_LABELS_FR = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Ao
 export async function getAnalyticsOverview(): Promise<AnalyticsOverview> {
   const supabase = createAdminClient();
 
-  const [{ count: totalArticles }, { count: publishedArticles }, { count: totalAuthors }, { data: viewsRows }] =
-    await Promise.all([
-      supabase.from('articles').select('*', { count: 'exact', head: true }),
-      supabase.from('articles').select('*', { count: 'exact', head: true }).eq('status', 'published'),
-      supabase.from('users').select('*', { count: 'exact', head: true }),
-      supabase.from('articles').select('view_count'),
-    ]);
+  const [
+    { count: totalArticles },
+    { count: publishedArticles },
+    { count: draftArticles },
+    { count: reviewArticles },
+    { count: scheduledArticles },
+    { count: archivedArticles },
+    { count: totalAuthors },
+    { count: totalCategories },
+    { count: totalMedia },
+    { data: viewsRows },
+    { count: trashedArticles },
+    { count: trashedMedia },
+    { count: trashedUsers },
+  ] = await Promise.all([
+    // Every status count below (including this "total") excludes trashed
+    // (soft-deleted) articles by default via Postgres' implicit filter
+    // handling of NULL - deleted_at is only non-null once trashed, and
+    // none of these queries filter on deleted_at at all, so a trashed
+    // article's status (whatever it was when deleted) is simply not
+    // counted here anymore - it now only shows up in the `trash` block
+    // below, avoiding double-counting a title as both e.g. "Archivé" and
+    // "in the recycle bin" at once. See article-service.ts's own
+    // `.is('deleted_at', null)` for the same exclusion on the public/
+    // admin article lists.
+    supabase.from('articles').select('*', { count: 'exact', head: true }).is('deleted_at', null),
+    supabase.from('articles').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'published'),
+    supabase.from('articles').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'draft'),
+    supabase.from('articles').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'review'),
+    supabase.from('articles').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'scheduled'),
+    supabase.from('articles').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'archived'),
+    supabase.from('users').select('*', { count: 'exact', head: true }),
+    // Top-level only, same reasoning as api/admin/stats/route.ts - every
+    // subcategory would otherwise inflate this into a much larger, more
+    // confusing number than the site's actual section count.
+    supabase.from('categories').select('*', { count: 'exact', head: true }).is('parent_id', null),
+    supabase.from('media').select('*', { count: 'exact', head: true }).is('deleted_at', null),
+    supabase.from('articles').select('view_count').is('deleted_at', null),
+    supabase.from('articles').select('*', { count: 'exact', head: true }).not('deleted_at', 'is', null),
+    supabase.from('media').select('*', { count: 'exact', head: true }).not('deleted_at', 'is', null),
+    supabase.from('users').select('*', { count: 'exact', head: true }).not('deleted_at', 'is', null),
+  ]);
 
   const totalViews = (viewsRows || []).reduce((sum: number, row: any) => sum + (row.view_count || 0), 0);
   const publishedCount = publishedArticles || 0;
+  const trashArticles = trashedArticles || 0;
+  const trashMedia = trashedMedia || 0;
+  const trashUsers = trashedUsers || 0;
 
   return {
     totalViews,
@@ -71,6 +129,18 @@ export async function getAnalyticsOverview(): Promise<AnalyticsOverview> {
     totalArticles: totalArticles || 0,
     totalAuthors: totalAuthors || 0,
     avgViewsPerArticle: publishedCount > 0 ? Math.round((totalViews / publishedCount) * 10) / 10 : 0,
+    draftArticles: draftArticles || 0,
+    reviewArticles: reviewArticles || 0,
+    scheduledArticles: scheduledArticles || 0,
+    archivedArticles: archivedArticles || 0,
+    totalCategories: totalCategories || 0,
+    totalMedia: totalMedia || 0,
+    trash: {
+      articles: trashArticles,
+      media: trashMedia,
+      users: trashUsers,
+      total: trashArticles + trashMedia + trashUsers,
+    },
   };
 }
 
