@@ -138,9 +138,19 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
                 nothing constrains an earlier unstick point. z-10 keeps it
                 above the content flowing past underneath during that
                 transition; shadow-lg gives it a visible edge against the
-                content once pinned, instead of a hard flat cutoff. */}
+                content once pinned, instead of a hard flat cutoff.
+                bg-background is the actual fix for the header text being
+                visible "passing through" the image while scrolling: a
+                stacking z-index only controls paint ORDER, it doesn't
+                make an element opaque - without an explicit background,
+                this div is transparent everywhere the photo itself
+                hasn't painted yet (each time it reloads/decodes as the
+                article changes, or any edge where the photo doesn't
+                fully cover the box), so the header text scrolling
+                underneath shows straight through instead of disappearing
+                cleanly behind it. */}
             {article.featured_image || article.coverImage ? (
-              <div className="sticky top-0 z-10 mt-6 h-[280px] w-full overflow-hidden rounded-lg shadow-lg">
+              <div className="sticky top-0 z-10 mt-6 h-[280px] w-full overflow-hidden rounded-lg bg-background shadow-lg">
                 <Image
                   src={article.featured_image || article.coverImage}
                   alt={article.title || 'Article'}
