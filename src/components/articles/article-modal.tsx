@@ -66,243 +66,215 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
     return article.published_at || article.createdAt || article.created_at || new Date().toISOString();
   };
 
+  const coverImage = article.featured_image || article.coverImage;
+
   return (
     <>
       {/* Backdrop, as its own element - NOT an ancestor of the modal
-          card below. backdrop-filter (backdrop-blur-sm) breaks
-          position: sticky for ANY descendant, not just elements
-          directly between the sticky element and its scroll container -
-          this is a well-documented cross-browser quirk (same family of
-          bug as a `transform` on an ancestor, see the hasEntered/
-          animatingTransform logic above). This div previously wrapped
-          the entire modal, including the sticky cover image, which is
-          why the image kept failing to stay properly locked in place
-          for the WHOLE time the modal was open (not just during the
-          300ms entrance animation the earlier fix addressed) - text
-          kept "passing through" it because the browser's sticky
-          calculation was continuously broken by this ancestor filter,
-          not just momentarily. */}
+          card below. backdrop-filter (backdrop-blur-md) breaks
+          position: sticky for ANY descendant, which is why this stays
+          split out instead of wrapping the card (see the close button's
+          own backdrop-blur below for why a SIBLING with backdrop-filter
+          is fine - only ancestors of the sticky image are the problem). */}
       {/* No onClick here - the original single div never closed on
           backdrop click either (only the X button / author link did),
           so this split keeps that exact same behavior rather than
           introducing a new interaction. */}
-      <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
-      <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-6">
+      <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-md" aria-hidden="true" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-3 sm:p-6">
       <div
-        className={`relative w-full max-w-4xl mx-auto my-8 ${
+        className={`relative w-full max-w-4xl mx-auto my-4 ${
           animatingTransform
             ? `transition-all duration-300 ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'}`
             : ''
         }`}
         onTransitionEnd={() => setHasEntered(true)}
       >
-        {/* max-h/overflow-y-auto keeps this a standard, contained dialog
-            instead of a page-length block - a previous version was
-            max-w-5xl with no height cap, so a long article turned the
-            "modal" into something the size of a whole page; that was
-            then narrowed to max-w-2xl, which went too far the other way
-            and made reading an article feel cramped. max-w-4xl is the
-            middle ground: wide enough to read comfortably, still capped
-            in height. */}
-        <div className="relative rounded-xl bg-background p-4 sm:p-6 md:p-8 shadow-2xl max-h-[85vh] overflow-y-auto">
-          {/* Close Button */}
+        {/* Card shell: rounded-2xl + overflow-y-auto directly on the SAME
+            div that holds the sticky cover image below - deliberately
+            NOT split into a separate outer "frame" div wrapping an inner
+            scroll div. overflow-hidden plus a live border-radius on an
+            ANCESTOR of a sticky element is its own known cross-browser
+            sticky-breaking combination, in the same family as the
+            transform/backdrop-filter bugs already fought and fixed in
+            this file - not worth the risk for a purely cosmetic corner.
+            overflow-y-auto here clips content to these same rounded
+            corners without introducing a new ancestor between the sticky
+            image and its containing block. */}
+        <div className="relative rounded-2xl bg-background border border-border/40 shadow-2xl shadow-black/30 max-h-[88vh] overflow-y-auto">
+          {/* Close Button - glass pill, floats above the sticky image
+              (z-20 vs the image's z-10) so it stays visible and
+              clickable the whole time the image is pinned. Living as a
+              SIBLING of the image (not an ancestor) is what makes its
+              own backdrop-blur safe - it can't break sticky for
+              elements it isn't a parent of. */}
           <button
             onClick={handleClose}
-            // z-20, one above the sticky cover image's z-10 below - now
-            // that the image actually sticks (see the transform fix
-            // above), it can end up pinned right under this button; this
-            // keeps the close button clickable and visible on top of it
-            // instead of the two fighting over the same stacking layer.
-            className="absolute right-4 top-4 z-20 rounded-full p-2 hover:bg-muted transition-colors bg-background/80 backdrop-blur-sm"
+            className="absolute right-4 top-4 z-20 rounded-full p-2.5 bg-background/70 hover:bg-background text-foreground/70 hover:text-foreground shadow-md backdrop-blur-md border border-border/40 transition-all cursor-pointer"
+            aria-label="Fermer"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
 
-          {/* Article Content */}
-          <article className="max-w-full">
-            {/* Header */}
-            <header className="space-y-4">
-              <h1 className="text-3xl font-bold md:text-4xl">{article.title || 'Article'}</h1>
-              <p className="text-lg text-muted-foreground">{article.excerpt || ''}</p>
-              
-              <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                {/* Author - Clickable to redirect to author page */}
-                <button
-                  onClick={() => handleAuthorClick(article.author?.id || article.author_id)}
-                  className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
-                >
-                  <User className="h-4 w-4" />
-                  <span className="font-medium">{article.author?.name || article.author_name || 'Auteur inconnu'}</span>
-                </button>
-                <span className="flex items-center gap-1">
-                  <Calendar className="h-4 w-4" />
-                  {formatDate(getDate())}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Clock className="h-4 w-4" />
-                  {getReadingTime(article.content || '')} min
-                </span>
-                <span className="flex items-center gap-1">
-                  <Eye className="h-4 w-4" />
-                  {article.view_count || article.views || 0} vues
-                </span>
-              </div>
-            </header>
+          {/* Cover Image - the very first thing inside the card now, an
+              immersive banner flush against the top and side corners,
+              rather than sitting below the title. This also resolves
+              the "text visible above the image" problem at its root:
+              since nothing precedes the image anymore, there's no
+              header text left to fade at a top edge. Title, meta pills
+              and the rest of the article now all scroll up FROM BELOW
+              instead, which is exactly the transition the fade strip
+              beneath the image was already built and confirmed to
+              handle well - one fade mechanism instead of two.
 
-            {/* Cover Image - sticky so it stays pinned in view once
-                scrolling reaches it, while the header above scrolls away
-                and the content below keeps scrolling past it. position:
-                sticky needs a scrollable ancestor to stick within, which
-                is the modal's own overflow-y-auto box below - it unsticks
-                naturally once the end of this <article> is reached, since
-                nothing constrains an earlier unstick point. z-10 keeps it
-                above the content flowing past underneath during that
-                transition; shadow-lg gives it a visible edge against the
-                content once pinned, instead of a hard flat cutoff.
-                bg-background makes the box itself opaque (fixes the
-                header text showing through anywhere the photo hasn't
-                painted yet).
-
-                The spacer div below (h-6, replacing what used to be
-                mt-6 directly on the sticky element) is a small non-sticky
-                gap between the header and the sticky region - a CSS
-                margin is never painted, so putting this on the sticky
-                element itself would leave permanently empty, uncovered
-                space; a separate ordinary element scrolls away cleanly
-                instead.
-
-                Both a top and bottom fade strip flank the image (see
-                their own comments below) so scrolling text fades out as
-                it approaches either edge rather than being hard-clipped.
-                The bottom one had room to spare below the image and
-                could just dock flush against it. The top one is trickier:
-                once the image sticks flush at the very top of the scroll
-                area (top-0), there is no visible space left above it to
-                fade into - anything above that point is already clipped
-                by the scroll container's own overflow. So the image's
-                own sticky offset is pushed down to top-10 (40px, matching
-                the strip's h-10) to deliberately reserve that band for
-                the fade strip to live in - the bottom strip's offset
-                shifts down to match (top-[320px] = 40 + 280). */}
-            {article.featured_image || article.coverImage ? (
-              <>
-                <div className="h-6" aria-hidden="true" />
-                {/* Top fade strip - sticky, occupying the 40px band
-                    reserved above the image (see comment above). Header
-                    text fades out here as it scrolls up and approaches
-                    the image, instead of disappearing behind a hard clip
-                    edge. bg-gradient-to-b from-transparent (top, furthest
-                    from the image) to-background (bottom, flush against
-                    the image) is the mirror of the bottom strip's
-                    gradient below - reversed because this is the "away"
-                    edge instead of the "near" edge. */}
-                <div
-                  className="sticky top-0 z-10 isolate h-10 w-full bg-gradient-to-b from-transparent to-background pointer-events-none"
-                  aria-hidden="true"
+              position: sticky needs a scrollable ancestor to stick
+              within, which is this card div itself (overflow-y-auto
+              above) - it unsticks naturally once the end of the
+              scrollable content is reached. z-10 keeps it above content
+              flowing past underneath; isolate forces it into its own
+              guaranteed stacking context so z-index resolves
+              unambiguously against its siblings. bg-muted is a neutral
+              placeholder while the image loads. rounded-t-2xl matches
+              the card's own corner radius now that the image sits
+              flush against it - the card's overflow-y-auto clip already
+              guarantees this, this is just belt-and-suspenders for the
+              corner pixels. */}
+          {coverImage ? (
+            <>
+              <div className="sticky top-0 z-10 isolate h-[280px] w-full overflow-hidden rounded-t-2xl bg-muted">
+                <Image
+                  src={coverImage}
+                  alt={article.title || 'Article'}
+                  fill
+                  sizes="(min-width: 768px) 800px, 100vw"
+                  priority
+                  className="object-cover"
                 />
-                {/* isolate forces this element into its own guaranteed
-                    stacking context, so its z-index is resolved cleanly
-                    against its siblings with no ambiguity from any
-                    nested context above or below it - the last bit of
-                    insurance on top of position: sticky actually working
-                    (fixed), the box being fully opaque (fixed), and
-                    nothing left above it in paint order, so content
-                    scrolling underneath is covered for the image's
-                    entire height, not just glimpsed at one edge. top-10
-                    (rather than top-0) leaves the 40px band above it free
-                    for the top fade strip - see the comment block above
-                    this whole section. */}
-                <div className="sticky top-10 z-10 isolate h-[280px] w-full overflow-hidden rounded-lg bg-background shadow-lg">
-                  <Image
-                    src={article.featured_image || article.coverImage}
-                    alt={article.title || 'Article'}
-                    fill
-                    sizes="(min-width: 768px) 720px, 100vw"
-                    priority
-                    className="object-cover"
+              </div>
+              {/* Fade strip - its own sticky element, pinned flush
+                  against the image's bottom edge (top-[280px] matches
+                  the image's h-[280px], so once both are stuck this
+                  sits immediately below it with no gap). Scrolling text
+                  visually fades out over this ~40px band as it passes
+                  underneath instead of being hard-clipped by the
+                  image's opaque edge - the fix already confirmed
+                  working, now handling the title/meta block too, since
+                  it scrolls up through here on its way behind the image
+                  just like the rest of the article body always did.
+                  bg-gradient-to-b from-background (opaque, matching the
+                  card) to transparent is the actual fade;
+                  pointer-events-none keeps it from ever intercepting
+                  clicks/selection on the text passing beneath it. */}
+              <div
+                className="sticky top-[280px] z-10 isolate h-10 w-full bg-gradient-to-b from-background to-transparent pointer-events-none"
+                aria-hidden="true"
+              />
+            </>
+          ) : null}
+
+          {/* Article Content */}
+          <div className="p-6 sm:p-8 md:p-10">
+            <article className="max-w-full">
+              {/* Header */}
+              <header className="space-y-4">
+                <h1 className="text-3xl font-extrabold tracking-tight md:text-4xl">{article.title || 'Article'}</h1>
+                <p className="text-lg text-muted-foreground">{article.excerpt || ''}</p>
+
+                {/* Metadata pills - same data and handler as before,
+                    just styled as compact rounded badges (icon + label)
+                    instead of a plain inline row, closer to a magazine
+                    byline than a form of metadata dump. */}
+                <div className="flex flex-wrap items-center gap-2.5 pt-1 text-xs font-medium text-muted-foreground">
+                  <button
+                    onClick={() => handleAuthorClick(article.author?.id || article.author_id)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-muted/60 px-3 py-1.5 hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer"
+                  >
+                    <User className="h-3.5 w-3.5" />
+                    <span className="font-semibold">{article.author?.name || article.author_name || 'Auteur inconnu'}</span>
+                  </button>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border/30 bg-muted/40 px-3 py-1.5">
+                    <Calendar className="h-3.5 w-3.5" />
+                    {formatDate(getDate())}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border/30 bg-muted/40 px-3 py-1.5">
+                    <Clock className="h-3.5 w-3.5" />
+                    {getReadingTime(article.content || '')} min
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border/30 bg-muted/40 px-3 py-1.5">
+                    <Eye className="h-3.5 w-3.5" />
+                    {article.view_count || article.views || 0} vues
+                  </span>
+                </div>
+              </header>
+
+              {/* Soft gradient divider instead of a flat border line */}
+              <div className="my-6 h-px w-full bg-gradient-to-r from-transparent via-border to-transparent" aria-hidden="true" />
+
+              {/* Content - Tailwind Typography's `prose` sets its base
+                  line-height (1.75) on the .prose container itself, not
+                  per-element, so an earlier pass (prose-p:leading-relaxed,
+                  1.625) only nudged individual <p> tags while the
+                  container's looser 1.75 still won most of the reading
+                  rhythm. leading-normal directly on this wrapper
+                  overrides that base line-height outright, and
+                  prose-p:leading-normal keeps <p> consistent with it -
+                  kept unchanged from that tuning pass, which matched
+                  this to the editor's own spacing. prose-headings:font-bold/
+                  tracking-tight and prose-img:rounded-xl below are
+                  purely additive polish. */}
+              <div
+                className="prose dark:prose-invert max-w-none leading-normal prose-p:my-2 prose-p:leading-normal prose-headings:font-bold prose-headings:tracking-tight prose-headings:mt-4 prose-headings:mb-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-blockquote:my-2 prose-img:rounded-xl"
+                dangerouslySetInnerHTML={{ __html: article.content || '' }}
+              />
+
+              {/* Tags */}
+              {article.tags && article.tags.length > 0 && (
+                <div className="mt-8">
+                  <ArticleTags tags={article.tags} />
+                </div>
+              )}
+
+              {/* Author Bio - the real publishing user's info (bio, role,
+                  social links), clickable through to their full profile at
+                  /author/[id]. */}
+              {article.author && (
+                <div className="mt-8">
+                  <AuthorBio
+                    author={{
+                      id: article.author.id,
+                      name: article.author.name,
+                      avatar: article.author.avatarUrl,
+                      bio: article.author.bio,
+                      email: article.author.email,
+                      twitter: article.author.twitter,
+                      linkedin: article.author.linkedin,
+                      website: article.author.website,
+                      role: article.author.roleTitle,
+                    }}
+                    locale={locale}
                   />
                 </div>
-                {/* Fade strip - its own sticky element, pinned flush
-                    against the image's bottom edge (top-[320px] = the
-                    image's top-10 offset plus its 280px height, so once
-                    both are stuck this sits immediately below it with no
-                    gap). Rather than relying purely on the image being a
-                    perfect opaque hard cutoff, scrolling text now
-                    visually fades out over this ~40px band as it passes
-                    underneath - softer, more forgiving UX, and it reads
-                    as intentional instead of an abrupt clip.
-                    bg-gradient-to-b from-background (opaque, matching the
-                    card) to transparent is the actual fade;
-                    pointer-events-none keeps it from ever intercepting
-                    clicks/selection on the article text passing
-                    beneath it. */}
-                <div
-                  className="sticky top-[320px] z-10 isolate h-10 w-full bg-gradient-to-b from-background to-transparent pointer-events-none"
-                  aria-hidden="true"
-                />
-              </>
-            ) : null}
+              )}
 
-            {/* Content - Tailwind Typography's `prose` sets its base
-                line-height (1.75) on the .prose container itself, not
-                per-element, so the first pass (prose-p:leading-relaxed,
-                1.625) only nudged individual <p> tags and the container's
-                looser 1.75 was still winning most of the visual reading
-                rhythm. Setting `leading-normal` directly on this wrapper
-                overrides that base container line-height outright, and
-                prose-p:leading-normal keeps <p> consistent with it. Margins
-                tightened further too (my-3 -> my-2, matching the editor). */}
-            <div
-              className="mt-6 prose dark:prose-invert max-w-none leading-normal prose-p:my-2 prose-p:leading-normal prose-headings:mt-4 prose-headings:mb-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-blockquote:my-2"
-              dangerouslySetInnerHTML={{ __html: article.content || '' }}
-            />
-
-            {/* Tags */}
-            {article.tags && article.tags.length > 0 && (
+              {/* Ad Component - In Article */}
               <div className="mt-8">
-                <ArticleTags tags={article.tags} />
+                <AdComponent type="in-article" />
               </div>
-            )}
 
-            {/* Author Bio - the real publishing user's info (bio, role,
-                social links), clickable through to their full profile at
-                /author/[id]. */}
-            {article.author && (
-              <div className="mt-8">
-                <AuthorBio
-                  author={{
-                    id: article.author.id,
-                    name: article.author.name,
-                    avatar: article.author.avatarUrl,
-                    bio: article.author.bio,
-                    email: article.author.email,
-                    twitter: article.author.twitter,
-                    linkedin: article.author.linkedin,
-                    website: article.author.website,
-                    role: article.author.roleTitle,
-                  }}
-                  locale={locale}
+              {/* Social Share & Actions */}
+              <div className="mt-6 h-px w-full bg-gradient-to-r from-transparent via-border to-transparent" aria-hidden="true" />
+              <div className="mt-6 flex flex-wrap items-center justify-between pt-2">
+                <SocialShare
+                  url={`${process.env.NEXT_PUBLIC_APP_URL}/${locale}/articles/${article.slug}`}
+                  title={article.title || ''}
                 />
+                <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
+                  <Bookmark className="h-4 w-4" />
+                  Enregistrer
+                </button>
               </div>
-            )}
-
-            {/* Ad Component - In Article */}
-            <div className="mt-8">
-              <AdComponent type="in-article" />
-            </div>
-
-            {/* Social Share & Actions */}
-            <div className="mt-6 flex flex-wrap items-center justify-between border-t pt-6">
-              <SocialShare 
-                url={`${process.env.NEXT_PUBLIC_APP_URL}/${locale}/articles/${article.slug}`}
-                title={article.title || ''}
-              />
-              <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
-                <Bookmark className="h-4 w-4" />
-                Enregistrer
-              </button>
-            </div>
-          </article>
+            </article>
+          </div>
         </div>
       </div>
       </div>
