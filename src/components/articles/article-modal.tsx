@@ -176,7 +176,16 @@ export function ArticleModal({ article, onClose, locale }: ArticleModalProps) {
             {article.featured_image || article.coverImage ? (
               <>
                 <div className="h-6" aria-hidden="true" />
-                <div className="sticky top-0 z-10 h-[280px] w-full overflow-hidden rounded-lg bg-background shadow-lg">
+                {/* isolate forces this element into its own guaranteed
+                    stacking context, so its z-index is resolved cleanly
+                    against its siblings with no ambiguity from any
+                    nested context above or below it - the last bit of
+                    insurance on top of position: sticky actually working
+                    (fixed), the box being fully opaque (fixed), and
+                    nothing left above it in paint order, so content
+                    scrolling underneath is covered for the image's
+                    entire height, not just glimpsed at one edge. */}
+                <div className="sticky top-0 z-10 isolate h-[280px] w-full overflow-hidden rounded-lg bg-background shadow-lg">
                   <Image
                     src={article.featured_image || article.coverImage}
                     alt={article.title || 'Article'}
