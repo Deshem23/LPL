@@ -8,7 +8,7 @@ import Image from 'next/image';
 import { Calendar, Clock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatDate, getReadingTime } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
 import { getArticles, type Article } from '@/lib/api/articles';
 
 interface PinnedArticlesProps {
@@ -84,7 +84,12 @@ export async function PinnedArticles({ locale, articles: articlesProp }: PinnedA
             </h2>
             <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-white/70 sm:text-sm">
               <span>{formatDate(mainArticle.createdAt)}</span>
-              <span>{getReadingTime(mainArticle.content)} min</span>
+              {/* reading_time is precomputed at write time and returned
+                  as e.g. "5 min" - no longer derived from `content` here,
+                  since the list query that fetches these cards no longer
+                  selects the (often large) full article body at all, see
+                  getArticles() in article-service.ts. */}
+              <span>{mainArticle.readTime || '1 min'}</span>
             </div>
           </div>
         </div>

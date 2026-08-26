@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Calendar, Clock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { formatDate, getReadingTime } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
 import { getArticles, type Article } from '@/lib/api/articles';
 
 interface SimpleArticleListProps {
@@ -79,7 +79,9 @@ export async function SimpleArticleList({
                 </span>
                 <span className="flex items-center gap-1">
                   <Clock className="h-3 w-3" />
-                  {getReadingTime(article.content)} min
+                  {/* precomputed at write time - see the matching note
+                      in pinned-articles.tsx */}
+                  {article.readTime || '1 min'}
                 </span>
               </div>
             </div>

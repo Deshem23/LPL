@@ -105,10 +105,22 @@ export async function POST(request: NextRequest) {
       const fileName = `${randomUUID()}.${fileExt}`;
       const filePath = `media/${type}/${fileName}`;
 
-      // Upload to Supabase Storage
+      // Upload to Supabase Storage. cacheControl is a full year - safe
+      // because filePath always embeds a fresh randomUUID() (see above),
+      // so a given path is only ever written once and its bytes never
+      // change under it; there's no "this URL got overwritten" case to
+      // worry about invalidating. Without this, Supabase's default is a
+      // much shorter cache lifetime, so every repeat view of the same
+      // image (every card/thumbnail render, across every visitor) was
+      // re-downloading it from Storage instead of being served from a
+      // browser/CDN/Next Image Optimization cache - a meaningful chunk
+      // of the "Egress Exceeded" quota warning on the Supabase project.
       const { error: uploadError } = await supabase.storage
         .from('media')
-        .upload(filePath, fileBuffer, { contentType: file.type });
+        .upload(filePath, fileBuffer, {
+          contentType: file.type,
+          cacheControl: '31536000',
+        });
 
       if (uploadError) {
         console.error('Upload error:', uploadError);

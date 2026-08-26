@@ -5,7 +5,12 @@ export interface Article {
   slug: string;
   title: string;
   excerpt?: string;
-  content: string;
+  // Optional, not required: getArticles() (the list/index query) no
+  // longer selects this column at all (see its comment further down) to
+  // cut Supabase egress, so a list-derived Article won't have it. Only
+  // getArticleById()/getArticleBySlug() (a single full-article fetch)
+  // populate it.
+  content?: string;
   featured_image?: string;
   cover_image?: string;
   status: 'draft' | 'review' | 'scheduled' | 'published' | 'archived';
@@ -170,8 +175,43 @@ export async function getArticles(params: {
 
   let query = supabase
     .from('articles')
+    // Explicit column list instead of `*` - this is the list/index query
+    // (homepage, category pages, /articles, /tags, /author, the sitemap,
+    // the admin table, every public API route), called far more often
+    // and with far higher row limits (up to 1000 for the sitemap) than a
+    // single-article fetch. `content` is the one column that actually
+    // matters here: it's the full article body HTML, often tens of KB,
+    // and nothing in a list/card view ever renders it - reading time is
+    // precomputed into `reading_time` at write time (see
+    // createArticle()/updateArticle() below) instead of being derived
+    // from content on every read. Pulling it into every list query was
+    // multiplying Supabase egress by the row limit for no reason. A
+    // single article's full row (with content) is still fetched via
+    // getArticleById()/getArticleBySlug() below, which is what the
+    // article page and the admin editor actually use.
     .select(`
-      *,
+      id,
+      slug,
+      title,
+      excerpt,
+      featured_image,
+      cover_image,
+      status,
+      is_pinned,
+      is_trending,
+      is_suggestion,
+      is_breaking,
+      is_featured,
+      view_count,
+      author_id,
+      category_id,
+      scheduled_publish_at,
+      published_at,
+      created_at,
+      updated_at,
+      reading_time,
+      meta_description,
+      deleted_at,
       author:author_id (
         id,
         name,
@@ -252,7 +292,17 @@ export async function getArticles(params: {
     return { articles: [], total: 0, totalPages: 0, currentPage: page };
   }
 
-  const articles = data || [];
+  // Cast rather than lean on Supabase's auto-inferred row type: with a
+  // fully explicit column list (instead of `*`), supabase-js's select-
+  // string type parser infers embedded relations (author/category) as
+  // arrays instead of single objects when it can't see real foreign-key
+  // relationship metadata (this admin client isn't constructed against
+  // generated Database types) - a type-level artifact only, not a
+  // runtime one; PostgREST still returns a single object for a to-one
+  // embed exactly like it always has. The hand-maintained `Article`
+  // interface above is what every caller in the codebase actually relies
+  // on, so that's the type to trust here.
+  const articles = (data || []) as unknown as Article[];
   const total = count || 0;
 
   console.log(`✅ Found ${total} articles (returning ${articles.length})`);
@@ -591,7 +641,9 @@ export async function getTrashedArticles(): Promise<Article[]> {
     return [];
   }
 
-  return data || [];
+  // See the matching comment in getArticles() above - same
+  // supabase-js embedded-relation type-inference artifact.
+  return (data || []) as unknown as Article[];
 }
 
 export async function incrementViewCount(id: string): Promise<void> {
