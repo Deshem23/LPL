@@ -9,7 +9,6 @@ import { logAction } from '@/lib/services/audit-service';
 // serve a stale snapshot until a full rebuild/refresh.
 export const dynamic = 'force-dynamic';
 
-
 // Was an empty file. Self-service "my own profile" endpoint - used by
 // the first-login "complete your profile" gate (src/app/complete-profile)
 // and any future account-settings page. Identity comes from the
@@ -83,7 +82,6 @@ export async function PATCH(request: NextRequest) {
     // what actually tells us whether the role/path computed here was
     // right, rather than guessing blind.
     if (completeFirstLogin === true) {
-      console.log('🎯 First-login complete for', authUser.id, '- role:', result.user?.role, '- redirecting to:', redirectTo);
     }
 
     logAction({

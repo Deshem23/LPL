@@ -180,7 +180,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         setUserName(name);
         setUserAvatarUrl(avatarUrl);
 
-        console.log(`👤 User loaded: ${user.email} with role: ${role}`);
       } else {
         // No user, redirect to login
         router.push('/lpl-access-2026');
@@ -204,7 +203,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const urlParams = new URLSearchParams(window.location.search);
     const roleParam = urlParams.get('role');
     if (roleParam) {
-      console.log(`🔍 Role parameter detected: ${roleParam}`);
       // Refresh user data
       loadUser();
       // Clean URL
@@ -215,7 +213,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     // Listen for storage events (role changes from other tabs)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'user_role') {
-        console.log(`🔄 Role changed in another tab: ${e.newValue}`);
         loadUser();
       }
     };

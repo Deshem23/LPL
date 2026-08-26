@@ -230,6 +230,5 @@ export async function purgeExpiredTrash(): Promise<void> {
 
   const total = (expiredMedia?.length || 0) + (expiredArticles?.length || 0) + (expiredUsers?.length || 0);
   if (total > 0) {
-    console.log(`🗑️ Auto-purged ${total} trashed item(s) past the ${RETENTION_DAYS}-day retention window`);
   }
 }

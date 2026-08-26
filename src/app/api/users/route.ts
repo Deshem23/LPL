@@ -12,16 +12,12 @@ import { requirePermission } from '@/lib/auth/require-permission';
 // serve a stale snapshot until a full rebuild/refresh.
 export const dynamic = 'force-dynamic';
 
-
 export async function GET() {
   try {
     const auth = await requirePermission('canViewUsers');
     if (auth instanceof NextResponse) return auth;
 
-    console.log('📥 GET /api/users - Fetching users...');
     const users = await getAllUsers();
-    console.log(`📤 Returning ${users.length} users`);
-    console.log('📊 Users:', users.map(u => ({ name: u.name, role: u.role })));
     return NextResponse.json({ users });
   } catch (error) {
     console.error('❌ Error fetching users:', error);
@@ -40,8 +36,6 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const { email, password, name, role, bio, role_title, twitter, linkedin, website, avatar_url } = body;
-
-    console.log('👤 Creating user:', { email, name, role });
 
     if (!email || !password || !name) {
       return NextResponse.json(

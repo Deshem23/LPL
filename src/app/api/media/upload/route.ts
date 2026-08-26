@@ -3,8 +3,83 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { getCurrentUser } from '@/lib/auth/actions';
 import { randomUUID, createHash } from 'crypto';
 import { logAction } from '@/lib/services/audit-service';
+import sharp from 'sharp';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+// Formats sharp can safely re-encode. SVGs are vector (resizing/raster
+// re-encoding would just rasterize them for no benefit) and GIFs are
+// often animated (sharp would flatten them to a single static frame) -
+// both are uploaded as-is, unresized.
+const RESIZABLE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+// Long-edge cap per upload context - avatars are only ever shown small
+// (profile menus, author bylines), so they get a much smaller ceiling
+// than general article/media images.
+const MAX_DIMENSIONS: Record<string, number> = {
+  avatar: 512,
+};
+const DEFAULT_MAX_DIMENSION = 2000;
+
+/**
+ * Downscales and re-compresses an uploaded image before it's written to
+ * Storage. Every byte here is billed egress on every future view (this is
+ * the same "Egress Exceeded" issue already fixed for list-query payloads
+ * in article-service.ts) - a phone photo uploaded straight through could
+ * be 4000px/4-5MB for something that only ever renders at a few hundred
+ * pixels wide. Falls back to the original, untouched buffer on any sharp
+ * failure (corrupt/unusual file, unsupported variant, etc.) so a resize
+ * problem never blocks the upload itself.
+ */
+async function optimizeImage(
+  buffer: Buffer,
+  mimeType: string,
+  type: string
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  if (!RESIZABLE_TYPES.has(mimeType)) {
+    return { buffer, mimeType };
+  }
+
+  try {
+    const maxDimension = MAX_DIMENSIONS[type] ?? DEFAULT_MAX_DIMENSION;
+    const image = sharp(buffer, { failOn: 'none' }).rotate(); // .rotate() with no args auto-orients from EXIF, then strips it
+    const metadata = await image.metadata();
+
+    let pipeline = image;
+    if (
+      metadata.width &&
+      metadata.height &&
+      (metadata.width > maxDimension || metadata.height > maxDimension)
+    ) {
+      pipeline = pipeline.resize(maxDimension, maxDimension, {
+        fit: 'inside',
+        withoutEnlargement: true,
+      });
+    }
+
+    let optimized: Buffer;
+    let outMimeType = mimeType;
+    if (mimeType === 'image/png') {
+      optimized = await pipeline.png({ compressionLevel: 9 }).toBuffer();
+    } else if (mimeType === 'image/webp') {
+      optimized = await pipeline.webp({ quality: 82 }).toBuffer();
+    } else {
+      optimized = await pipeline.jpeg({ quality: 82, mozjpeg: true }).toBuffer();
+      outMimeType = 'image/jpeg';
+    }
+
+    // Only use the re-encode if it's actually smaller - a tiny/already
+    // well-compressed image can occasionally grow slightly under a fresh
+    // encode, and there's no point trading quality for a larger file.
+    if (optimized.length < buffer.length) {
+      return { buffer: optimized, mimeType: outMimeType };
+    }
+    return { buffer, mimeType };
+  } catch (err) {
+    console.error('Image optimization failed, using original file:', err);
+    return { buffer, mimeType };
+  }
+}
 
 // Always fetch fresh from the DB - a GET route handler with no
 // request-derived dynamic behavior is otherwise eligible for Next's
@@ -101,6 +176,15 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
+      // Dedup above hashes the ORIGINAL bytes on purpose - two different
+      // uploads of the exact same source photo should always match each
+      // other regardless of this step, and re-running the resize/encode
+      // on a byte-identical re-upload isn't deterministic enough to rely
+      // on for a content-hash match. The optimized bytes are what
+      // actually gets uploaded and stored below.
+      const { buffer: optimizedBuffer, mimeType: optimizedMimeType } =
+        await optimizeImage(fileBuffer, file.type, type);
+
       const fileExt = file.name.split('.').pop();
       const fileName = `${randomUUID()}.${fileExt}`;
       const filePath = `media/${type}/${fileName}`;
@@ -117,8 +201,8 @@ export async function POST(request: NextRequest) {
       // of the "Egress Exceeded" quota warning on the Supabase project.
       const { error: uploadError } = await supabase.storage
         .from('media')
-        .upload(filePath, fileBuffer, {
-          contentType: file.type,
+        .upload(filePath, optimizedBuffer, {
+          contentType: optimizedMimeType,
           cacheControl: '31536000',
         });
 
@@ -142,8 +226,8 @@ export async function POST(request: NextRequest) {
           alt_text: altText,
           caption,
           file_name: file.name,
-          file_size: file.size,
-          mime_type: file.type,
+          file_size: optimizedBuffer.length,
+          mime_type: optimizedMimeType,
           content_hash: contentHash,
         })
         .select()
@@ -162,7 +246,7 @@ export async function POST(request: NextRequest) {
         action: 'media.upload',
         entityType: 'media',
         entityId: media.id,
-        details: { fileName: file.name, type, fileSize: file.size },
+        details: { fileName: file.name, type, fileSize: optimizedBuffer.length, originalFileSize: file.size },
       });
     }
 

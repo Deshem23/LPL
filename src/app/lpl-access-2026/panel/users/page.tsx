@@ -132,7 +132,6 @@ export default function AdminUsersPage() {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      console.log('🔍 Fetching users from API...');
       // Was a Date.now() cache-busting query param - works, but only by
       // accident (a unique URL every call). Using cache:'no-store'
       // directly says what's actually meant, same as everywhere else
@@ -140,12 +139,7 @@ export default function AdminUsersPage() {
       const response = await fetch('/api/users', { cache: 'no-store' });
       const data = await response.json();
 
-      console.log('📊 Full API Response:', data);
-      console.log('📊 Users array:', data.users);
-      console.log('📊 Users count:', data.users?.length);
-
       if (response.ok && data.users) {
-        console.log('✅ Setting users:', data.users);
         setUsers(data.users);
       } else {
         throw new Error(data.error || 'Failed to load users');
@@ -416,14 +410,6 @@ export default function AdminUsersPage() {
                          user.email?.toLowerCase().includes(search.toLowerCase());
     const matchesRole = roleFilter === 'all' || user.role === roleFilter;
     return matchesSearch && matchesRole;
-  });
-
-  console.log('🔄 Rendering users page:', {
-    totalUsers: users.length,
-    filteredUsers: filteredUsers.length,
-    roleFilter,
-    search,
-    users: users.map(u => ({ name: u.name, role: u.role }))
   });
 
   if (loading) {

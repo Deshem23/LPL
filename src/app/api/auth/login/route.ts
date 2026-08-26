@@ -9,7 +9,6 @@ import { checkRateLimit } from '@/lib/rate-limit';
 // serve a stale snapshot until a full rebuild/refresh.
 export const dynamic = 'force-dynamic';
 
-
 export async function POST(request: Request) {
   try {
     // 10 attempts / 5 minutes per IP - generous enough for a genuine user
@@ -73,14 +72,12 @@ export async function POST(request: Request) {
       role = profile?.role || 'contributor';
       // Sync role to auth metadata if different
       if (role !== data.user?.user_metadata?.role) {
-        console.log(`🔄 Syncing role: ${role} for user ${data.user.id}`);
         const { error: updateError } = await supabase.auth.updateUser({
           data: { role: role }
         });
         if (updateError) {
           console.error('❌ Error syncing role:', updateError);
         } else {
-          console.log(`✅ Role synced: ${role}`);
         }
       }
     }

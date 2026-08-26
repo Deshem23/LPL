@@ -52,7 +52,6 @@ export function createAdminClient() {
     );
   }
 
-  console.log('🔑 Creating admin client with service role key (cached for reuse)');
   cachedAdminClient = createClient(url, key, {
     auth: {
       // No browser/user session involved here at all - this is a static

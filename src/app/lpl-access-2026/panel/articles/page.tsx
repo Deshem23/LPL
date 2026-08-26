@@ -104,8 +104,6 @@ export default function AdminArticlesPage() {
         throw new Error(`Request failed with status ${response.status}`);
       }
       const result = await response.json();
-      console.log('📊 Loaded articles:', result.articles.length);
-      console.log('📊 Statuses:', result.articles.map((a: any) => a.status));
       setArticles(result.articles);
     } catch (error) {
       console.error('Error loading articles:', error);

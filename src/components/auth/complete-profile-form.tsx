@@ -188,7 +188,6 @@ export function CompleteProfileForm() {
       // line the server logs at the same moment, so the two can be
       // compared if the redirect ever lands somewhere unexpected.
       const destination = result.redirectTo || '/lpl-access-2026/panel';
-      console.log('[complete-profile] redirecting to', destination);
       window.location.href = destination;
     } catch (error: any) {
       toast({

@@ -7,23 +7,19 @@ import { NextResponse } from 'next/server';
 // serve a stale snapshot until a full rebuild/refresh.
 export const dynamic = 'force-dynamic';
 
-
 export async function GET(request: Request) {
-  console.log('🔍 User API called');
   
   try {
     const supabase = createClient();
     const { data: { user }, error } = await supabase.auth.getUser();
 
     if (error || !user) {
-      console.log('❌ Not authenticated');
       return NextResponse.json(
         { error: 'Not authenticated' },
         { status: 401 }
       );
     }
 
-    console.log('✅ User found:', user.email);
     return NextResponse.json({
       user: user,
     });

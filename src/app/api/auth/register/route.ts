@@ -11,9 +11,7 @@ import { logAction } from '@/lib/services/audit-service';
 // serve a stale snapshot until a full rebuild/refresh.
 export const dynamic = 'force-dynamic';
 
-
 export async function POST(request: Request) {
-  console.log('🔍 Register API called');
 
   try {
     // 5 accounts / hour per IP - registration abuse is lower-frequency by
@@ -40,12 +38,10 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    console.log('📝 Request body:', { email: body.email, name: body.name, password: '***' });
 
     const { email, password, name } = body;
 
     if (!email || !password || !name) {
-      console.log('❌ Missing required fields');
       return NextResponse.json(
         { error: 'Email, password, and name are required' },
         { status: 400 }
@@ -62,7 +58,6 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log('📝 Attempting registration for:', email);
     const supabase = createClient();
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -76,14 +71,11 @@ export async function POST(request: Request) {
     });
 
     if (error) {
-      console.log('❌ Supabase registration error:', error.message);
       return NextResponse.json(
         { error: error.message },
         { status: 400 }
       );
     }
-
-    console.log('✅ Registration successful for:', email);
 
     if (data.user) {
       logAction({

@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { LanguageSwitcher } from '@/components/layout/language-switcher';
-import { X, ChevronRight, ChevronDown } from 'lucide-react';
+import { X, ChevronRight, ChevronDown, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Category } from '@/lib/config/categories';
+import { SOCIAL_LINKS } from '@/lib/config/social-links';
 
 interface MobileMenuProps {
   isOpen: boolean;
@@ -66,6 +67,20 @@ export function MobileMenu({ isOpen, onClose, locale, categories }: MobileMenuPr
 
           <div className="flex-1 overflow-y-auto p-5">
             <nav className="space-y-2">
+              {/* Search entry point - the header's <SearchBar /> (inline
+                  expand-to-search-box) isn't rendered inside this slide-out
+                  panel, so without this there was no way to reach search
+                  once the menu was open. Links straight to the search page
+                  rather than reusing SearchBar's inline-expand UI, which
+                  doesn't have room to expand inside this narrow panel. */}
+              <a
+                href={`/${locale}/search`}
+                onClick={onClose}
+                className="flex items-center gap-3 rounded-lg px-5 py-4 text-base font-medium transition-colors hover:bg-muted"
+              >
+                <Search className="h-5 w-5 text-muted-foreground" />
+                Rechercher
+              </a>
               {navItems.map((item) => (
                 // Plain <a>, not next/link's <Link> - both entries here
                 // (Accueil, Tous les articles) point at force-dynamic pages
@@ -152,6 +167,29 @@ export function MobileMenu({ isOpen, onClose, locale, categories }: MobileMenuPr
                   </div>
                 );
               })}
+            </div>
+
+            <Separator className="my-5" />
+
+            <div className="space-y-3">
+              <p className="px-4 text-xs font-medium uppercase text-muted-foreground tracking-wider">
+                Suivez-nous
+              </p>
+              <div className="flex flex-wrap gap-3 px-4">
+                {SOCIAL_LINKS.map((social) => (
+                  <a
+                    key={social.name}
+                    href={social.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
+                    aria-label={social.name}
+                    title={social.name}
+                  >
+                    <social.icon className="h-5 w-5" />
+                  </a>
+                ))}
+              </div>
             </div>
 
             <Separator className="my-5" />

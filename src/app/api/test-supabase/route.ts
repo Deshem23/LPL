@@ -14,11 +14,9 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  console.log('🔍 Testing Supabase connection...');
   
   try {
     const supabase = createClient();
-    console.log('✅ Supabase client created');
     
     // Try to query categories
     const { data, error } = await supabase
@@ -35,7 +33,6 @@ export async function GET() {
       }, { status: 500 });
     }
     
-    console.log('✅ Supabase query successful');
     return NextResponse.json({
       status: 'success',
       message: 'Supabase connection working!',

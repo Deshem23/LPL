@@ -141,7 +141,6 @@ export async function publishDueScheduledArticles(): Promise<void> {
     return;
   }
   if (data && data.length > 0) {
-    console.log(`⏰ Auto-published ${data.length} scheduled article(s) whose time has come`);
   }
 }
 
@@ -170,8 +169,6 @@ export async function getArticles(params: {
   const page = params.page || 1;
   const limit = params.limit || 100;
   const offset = (page - 1) * limit;
-
-  console.log('🔍 getArticles called with params:', JSON.stringify(params, null, 2));
 
   let query = supabase
     .from('articles')
@@ -244,10 +241,8 @@ export async function getArticles(params: {
 
   // Apply status filter - FIXED!
   if (params.status && params.status !== 'all') {
-    console.log(`📊 Filtering by status: ${params.status}`);
     query = query.eq('status', params.status);
   } else {
-    console.log('📊 Showing ALL articles (no status filter)');
     // Don't filter - show all statuses
   }
 
@@ -304,8 +299,6 @@ export async function getArticles(params: {
   // on, so that's the type to trust here.
   const articles = (data || []) as unknown as Article[];
   const total = count || 0;
-
-  console.log(`✅ Found ${total} articles (returning ${articles.length})`);
 
   return {
     articles,
@@ -394,7 +387,6 @@ export async function getArticleBySlug(slug: string): Promise<Article | null> {
 export async function createArticle(data: CreateArticleData): Promise<{ success: boolean; error?: string; article?: Article }> {
   const supabase = createAdminClient();
   
-  console.log('📝 Creating article with data:', JSON.stringify(data, null, 2));
   
   if (!data.title) {
     return { success: false, error: 'Title is required' };
@@ -443,8 +435,6 @@ export async function createArticle(data: CreateArticleData): Promise<{ success:
     view_count: 0,
   };
 
-  console.log('📤 Sending to Supabase:', JSON.stringify(articleData, null, 2));
-
   const { data: article, error } = await supabase
     .from('articles')
     .insert([articleData])
@@ -475,14 +465,12 @@ export async function createArticle(data: CreateArticleData): Promise<{ success:
     return { success: false, error: error.message };
   }
 
-  console.log('✅ Article created:', article.id);
   return { success: true, article };
 }
 
 export async function updateArticle(id: string, data: Partial<CreateArticleData>): Promise<{ success: boolean; error?: string; article?: Article }> {
   const supabase = createAdminClient();
   
-  console.log('📝 Updating article:', id);
   
   const updateData: any = {
     ...data,
@@ -544,7 +532,6 @@ export async function updateArticle(id: string, data: Partial<CreateArticleData>
     return { success: false, error: error.message };
   }
 
-  console.log('✅ Article updated:', article.id);
   return { success: true, article };
 }
 
@@ -557,8 +544,6 @@ export async function updateArticle(id: string, data: Partial<CreateArticleData>
 export async function deleteArticle(id: string): Promise<{ success: boolean; error?: string }> {
   const supabase = createAdminClient();
 
-  console.log('🗑️ Moving article to trash:', id);
-
   const { error } = await supabase
     .from('articles')
     .update({ deleted_at: new Date().toISOString() })
@@ -569,14 +554,11 @@ export async function deleteArticle(id: string): Promise<{ success: boolean; err
     return { success: false, error: error.message };
   }
 
-  console.log('✅ Article moved to trash:', id);
   return { success: true };
 }
 
 export async function restoreArticle(id: string): Promise<{ success: boolean; error?: string }> {
   const supabase = createAdminClient();
-
-  console.log('♻️ Restoring article from trash:', id);
 
   const { error } = await supabase
     .from('articles')
@@ -588,7 +570,6 @@ export async function restoreArticle(id: string): Promise<{ success: boolean; er
     return { success: false, error: error.message };
   }
 
-  console.log('✅ Article restored:', id);
   return { success: true };
 }
 
@@ -597,8 +578,6 @@ export async function restoreArticle(id: string): Promise<{ success: boolean; er
 // below once an item has been trashed for 30+ days.
 export async function permanentlyDeleteArticle(id: string): Promise<{ success: boolean; error?: string }> {
   const supabase = createAdminClient();
-
-  console.log('🗑️ Permanently deleting article:', id);
 
   const { error } = await supabase
     .from('articles')
@@ -610,7 +589,6 @@ export async function permanentlyDeleteArticle(id: string): Promise<{ success: b
     return { success: false, error: error.message };
   }
 
-  console.log('✅ Article permanently deleted:', id);
   return { success: true };
 }
 

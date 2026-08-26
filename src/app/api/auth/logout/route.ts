@@ -8,9 +8,7 @@ import { logAction } from '@/lib/services/audit-service';
 // serve a stale snapshot until a full rebuild/refresh.
 export const dynamic = 'force-dynamic';
 
-
 export async function POST(request: Request) {
-  console.log('🔍 Logout API called');
 
   try {
     const supabase = createClient();
@@ -20,7 +18,6 @@ export async function POST(request: Request) {
     const { error } = await supabase.auth.signOut();
 
     if (error) {
-      console.log('❌ Supabase logout error:', error.message);
       return NextResponse.json(
         { error: error.message },
         { status: 400 }
@@ -36,7 +33,6 @@ export async function POST(request: Request) {
       });
     }
 
-    console.log('✅ Logout successful');
     return NextResponse.json({
       message: 'Logged out successfully',
     });

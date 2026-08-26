@@ -28,8 +28,6 @@ export interface User {
 export async function getAllUsers(): Promise<User[]> {
   const supabase = createAdminClient();
 
-  console.log('🔍 Fetching all users from Supabase...');
-
   const { data, error } = await supabase
     .from('users')
     .select('id, email, name, role, status, avatar_url, bio, role_title, twitter, linkedin, website, must_change_password, created_at')
@@ -41,7 +39,6 @@ export async function getAllUsers(): Promise<User[]> {
     return [];
   }
 
-  console.log(`✅ Found ${data?.length || 0} users`);
   return data || [];
 }
 
@@ -193,11 +190,6 @@ export interface CreateUserData {
 }
 
 export async function createUser(userData: CreateUserData): Promise<{ success: boolean; error?: string; user?: any }> {
-  console.log('👤 Creating user with data:', {
-    email: userData.email,
-    name: userData.name,
-    role: userData.role
-  });
 
   try {
     // ✅ Use admin client for auth operations (safe for client components)
@@ -222,8 +214,6 @@ export async function createUser(userData: CreateUserData): Promise<{ success: b
     if (!data.user) {
       return { success: false, error: 'No user returned from auth' };
     }
-
-    console.log('✅ User created in auth:', data.user.id);
 
     await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -272,9 +262,7 @@ export async function createUser(userData: CreateUserData): Promise<{ success: b
         return { success: false, error: 'User created but profile insert failed: ' + insertError.message };
       }
 
-      console.log('✅ User profile inserted manually');
     } else {
-      console.log('✅ User profile found in public.users - filling in author fields');
 
       const { error: updateError } = await supabase
         .from('users')
@@ -387,7 +375,6 @@ export async function updateOwnProfile(
 }
 
 export async function updateUserRole(userId: string, role: string): Promise<{ success: boolean; error?: string }> {
-  console.log(`🔄 Updating role for user ${userId} to ${role}`);
   
   try {
     const supabase = createAdminClient();
@@ -417,7 +404,6 @@ export async function updateUserRole(userId: string, role: string): Promise<{ su
       console.error('⚠️ Role updated in DB but auth metadata sync failed:', err);
     });
 
-    console.log(`✅ Role updated for user ${userId}`);
     return { success: true };
   } catch (error: any) {
     console.error('❌ Unexpected error updating role:', error);
@@ -439,7 +425,6 @@ export async function updateUserRole(userId: string, role: string): Promise<{ su
  * trash view or by the 30-day auto-purge.
  */
 export async function deleteUser(userId: string): Promise<{ success: boolean; error?: string }> {
-  console.log(`🗑️ Moving user to trash: ${userId}`);
 
   try {
     const supabase = createAdminClient();
@@ -454,7 +439,6 @@ export async function deleteUser(userId: string): Promise<{ success: boolean; er
       return { success: false, error: error.message };
     }
 
-    console.log(`✅ User moved to trash: ${userId}`);
     return { success: true };
   } catch (error: any) {
     console.error('❌ Unexpected error trashing user:', error);
@@ -488,7 +472,6 @@ export async function restoreUser(userId: string): Promise<{ success: boolean; e
  * "User already registered" while showing nowhere in the list.
  */
 export async function permanentlyDeleteUser(userId: string): Promise<{ success: boolean; error?: string }> {
-  console.log(`🗑️ Permanently deleting user ${userId}`);
 
   try {
     const supabase = createAdminClient();
@@ -508,7 +491,6 @@ export async function permanentlyDeleteUser(userId: string): Promise<{ success: 
       };
     }
 
-    console.log(`✅ User permanently deleted: ${userId}`);
     return { success: true };
   } catch (error: any) {
     console.error('❌ Unexpected error deleting user:', error);
