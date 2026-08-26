@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, X } from 'lucide-react';
@@ -10,6 +10,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 
 export function SearchBar() {
   const router = useRouter();
+  const locale = useLocale();
   const t = useTranslations('Header');
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -54,7 +55,14 @@ export function SearchBar() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (query.trim()) {
-      router.push(`/search?q=${encodeURIComponent(query)}`);
+      // Was pushing the unprefixed `/search?q=...` - the middleware's
+      // locale-redirect (STEP 3 in middleware.ts) then rewrote that to
+      // `/${locale}/search` while dropping the `?q=...` query string
+      // entirely, so submitting a search always landed on the empty
+      // "Que recherchez-vous ?" state no matter what was typed. Pushing
+      // the already-locale-prefixed URL sidesteps that redirect (and its
+      // now-fixed query-string bug) altogether.
+      router.push(`/${locale}/search?q=${encodeURIComponent(query)}`);
       setIsOpen(false);
     }
   };

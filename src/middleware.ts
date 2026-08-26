@@ -252,6 +252,10 @@ export async function middleware(request: NextRequest) {
   // If it's the root path, redirect to default locale
   if (pathname === '/') {
     const url = new URL(`/${defaultLocale}`, request.url);
+    // new URL(path, base) only takes the path from `path` - any query
+    // string on the original request (e.g. a tracking param on the bare
+    // domain) is silently dropped unless copied over explicitly.
+    url.search = request.nextUrl.search;
     return redirectWithCookies(url);
   }
 
@@ -260,6 +264,13 @@ export async function middleware(request: NextRequest) {
   if (!pathnameHasLocale && !isLocaleExemptPath(pathname)) {
     const locale = getLocale(request);
     const newUrl = new URL(`/${locale}${pathname}`, request.url);
+    // Same query-string-drop issue as the root-path redirect above - this
+    // is the one that actually broke search: the header SearchBar used to
+    // push to the unprefixed `/search?q=...`, which lands here and,
+    // without this line, was redirected to `/${locale}/search` with the
+    // `?q=...` silently stripped - landing on an empty results page every
+    // time, regardless of what was typed.
+    newUrl.search = request.nextUrl.search;
     return redirectWithCookies(newUrl);
   }
 

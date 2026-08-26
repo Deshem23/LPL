@@ -115,9 +115,23 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const [userAvatarUrl, setUserAvatarUrl] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  // The header search box had no state, no onChange and no form/submit
+  // handler at all - it was a purely decorative <Input>, so typing into
+  // it and pressing Enter did nothing. Routes to the admin articles list,
+  // which already has its own search/filter UI (see the matching read of
+  // ?search= added in panel/articles/page.tsx).
+  const [adminSearch, setAdminSearch] = useState('');
   const pathname = usePathname();
   const router = useRouter();
   const { toast } = useToast();
+
+  const handleAdminSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const query = adminSearch.trim();
+    if (query) {
+      router.push(`/lpl-access-2026/panel/articles?search=${encodeURIComponent(query)}`);
+    }
+  };
 
   // Check mobile
   useEffect(() => {
@@ -180,6 +194,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         setUserName(name);
         setUserAvatarUrl(avatarUrl);
 
+        console.log(`👤 User loaded: ${user.email} with role: ${role}`);
       } else {
         // No user, redirect to login
         router.push('/lpl-access-2026');
@@ -203,6 +218,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const urlParams = new URLSearchParams(window.location.search);
     const roleParam = urlParams.get('role');
     if (roleParam) {
+      console.log(`🔍 Role parameter detected: ${roleParam}`);
       // Refresh user data
       loadUser();
       // Clean URL
@@ -213,6 +229,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     // Listen for storage events (role changes from other tabs)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'user_role') {
+        console.log(`🔄 Role changed in another tab: ${e.newValue}`);
         loadUser();
       }
     };
@@ -394,14 +411,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <div className="relative hidden sm:block">
+            <form onSubmit={handleAdminSearch} className="relative hidden sm:block">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 type="search"
                 placeholder="Rechercher dans l'admin..."
+                value={adminSearch}
+                onChange={(e) => setAdminSearch(e.target.value)}
                 className="w-64 pl-9"
               />
-            </div>
+            </form>
           </div>
 
           <div className="flex items-center gap-3">

@@ -82,6 +82,16 @@ export default function AdminArticlesPage() {
   const router = useRouter();
 
   useEffect(() => {
+    // Picks up ?search=... from the admin header's search box (see
+    // panel/layout.tsx) so landing here from that search actually shows
+    // pre-filtered results instead of the full unfiltered list. Read via
+    // window.location.search inside the effect (client-only, post-mount)
+    // rather than next/navigation's useSearchParams(), which would force
+    // this whole page under a Suspense boundary for no real benefit here.
+    const initialSearch = new URLSearchParams(window.location.search).get('search');
+    if (initialSearch) {
+      setSearch(initialSearch);
+    }
     loadArticles();
     loadFilterOptions();
   }, []);
@@ -104,6 +114,8 @@ export default function AdminArticlesPage() {
         throw new Error(`Request failed with status ${response.status}`);
       }
       const result = await response.json();
+      console.log('📊 Loaded articles:', result.articles.length);
+      console.log('📊 Statuses:', result.articles.map((a: any) => a.status));
       setArticles(result.articles);
     } catch (error) {
       console.error('Error loading articles:', error);
