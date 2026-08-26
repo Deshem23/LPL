@@ -119,11 +119,18 @@ export async function getAuthorProfile(id: string): Promise<PublicAuthorProfile 
 
   if (error || !user) return null;
 
+  // Both queries below were missing .is('deleted_at', null) - soft-deleting
+  // an article (see deleteArticle() in article-service.ts) only stamps
+  // deleted_at, it never touches status, so a trashed article that was
+  // published before being trashed still has status='published' and kept
+  // counting toward this author's public article count and view total
+  // indefinitely, same bug already fixed for search (searchArticlesInDb).
   const { count: totalArticles } = await supabase
     .from('articles')
     .select('*', { count: 'exact', head: true })
     .eq('author_id', id)
-    .eq('status', 'published');
+    .eq('status', 'published')
+    .is('deleted_at', null);
 
   // No SUM() aggregate in supabase-js without an RPC - pull the
   // published articles' view counts and add them up here. Fine at
@@ -133,7 +140,8 @@ export async function getAuthorProfile(id: string): Promise<PublicAuthorProfile 
     .from('articles')
     .select('view_count')
     .eq('author_id', id)
-    .eq('status', 'published');
+    .eq('status', 'published')
+    .is('deleted_at', null);
 
   const totalViews = (viewRows || []).reduce((sum: number, row: any) => sum + (row.view_count || 0), 0);
 
