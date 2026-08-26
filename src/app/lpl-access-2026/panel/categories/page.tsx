@@ -59,6 +59,8 @@ export default function AdminCategoriesPage() {
   const [editingCategory, setEditingCategory] = useState<Category | undefined>(undefined);
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -118,6 +120,72 @@ export default function AdminCategoriesPage() {
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+  };
+
+  const toggleSelectAll = (idsOnPage: string[]) => {
+    const allSelected = idsOnPage.every((id) => selectedIds.includes(id));
+    setSelectedIds((prev) =>
+      allSelected ? prev.filter((id) => !idsOnPage.includes(id)) : [...new Set([...prev, ...idsOnPage])]
+    );
+  };
+
+  // deleteCategory() (category-service.ts) refuses to delete a category
+  // that still has subcategories or articles under it - which matters
+  // here because selecting a parent AND its own subcategories together
+  // ("delete this whole section") would otherwise race: if the parent's
+  // DELETE ran before its children's, it'd fail with "still has
+  // subcategories" even though every one of them was also about to be
+  // removed. Deleting subcategories first (in parallel - they're
+  // independent of each other), then top-level categories only once that
+  // settles, makes "select a parent and all its children" actually work
+  // in one action instead of requiring two separate passes.
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (
+      !confirm(
+        `Supprimer ${selectedIds.length} catégorie${selectedIds.length !== 1 ? 's' : ''} sélectionnée${selectedIds.length !== 1 ? 's' : ''} ? Cette action est irréversible.`
+      )
+    ) {
+      return;
+    }
+
+    const subcategoryIds = new Set(categories.flatMap((c) => (c.subcategories || []).map((s) => s.id)));
+    const subSelected = selectedIds.filter((id) => subcategoryIds.has(id));
+    const topSelected = selectedIds.filter((id) => !subcategoryIds.has(id));
+
+    setBulkDeleting(true);
+    try {
+      const deleteOne = (id: string) => fetch(`/api/categories/${id}`, { method: 'DELETE' });
+
+      const subResults = await Promise.allSettled(subSelected.map(deleteOne));
+      const topResults = await Promise.allSettled(topSelected.map(deleteOne));
+      const results = [...subResults, ...topResults];
+      const failures = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
+      const successCount = results.length - failures.length;
+
+      if (successCount > 0) {
+        toast({
+          title: 'Catégories supprimées',
+          description: `${successCount} catégorie${successCount !== 1 ? 's' : ''} supprimée${successCount !== 1 ? 's' : ''}.`,
+        });
+      }
+      if (failures.length > 0) {
+        toast({
+          title: failures.length === results.length ? 'Erreur' : 'Suppression partielle',
+          description: `${failures.length} catégorie${failures.length !== 1 ? 's' : ''} n'${failures.length !== 1 ? 'ont' : 'a'} pas pu être supprimée${failures.length !== 1 ? 's' : ''} (elle${failures.length !== 1 ? 's' : ''} contient peut-être encore des articles ou des sous-catégories).`,
+          variant: 'destructive',
+        });
+      }
+
+      setSelectedIds([]);
+      await fetchCategories();
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const handleEdit = (category: Category) => {
     setEditingCategory(category);
     setIsDialogOpen(true);
@@ -162,10 +230,23 @@ export default function AdminCategoriesPage() {
             Gérez les catégories et sous-catégories de votre plateforme.
           </p>
         </div>
-        <Button onClick={handleCreate} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Nouvelle catégorie
-        </Button>
+        <div className="flex items-center gap-2">
+          {selectedIds.length > 0 && (
+            <Button
+              variant="outline"
+              className="gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              disabled={bulkDeleting}
+              onClick={handleBulkDelete}
+            >
+              {bulkDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Supprimer la sélection ({selectedIds.length})
+            </Button>
+          )}
+          <Button onClick={handleCreate} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Nouvelle catégorie
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -181,6 +262,15 @@ export default function AdminCategoriesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <input
+                    type="checkbox"
+                    checked={categories.length > 0 && categories.every((c) => selectedIds.includes(c.id))}
+                    onChange={() => toggleSelectAll(categories.map((c) => c.id))}
+                    aria-label="Tout sélectionner"
+                    className="h-4 w-4 rounded border-input"
+                  />
+                </TableHead>
                 <TableHead className="w-[50px]">Ordre</TableHead>
                 <TableHead>Catégorie</TableHead>
                 <TableHead>Slug</TableHead>
@@ -194,6 +284,15 @@ export default function AdminCategoriesPage() {
               {categories.map((category) => (
                 <>
                   <TableRow key={category.id}>
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(category.id)}
+                        onChange={() => toggleSelect(category.id)}
+                        aria-label={`Sélectionner ${category.name}`}
+                        className="h-4 w-4 rounded border-input"
+                      />
+                    </TableCell>
                     <TableCell>
                       <GripVertical className="h-4 w-4 text-muted-foreground" />
                     </TableCell>
@@ -256,7 +355,7 @@ export default function AdminCategoriesPage() {
                   </TableRow>
                   {expandedCategories.includes(category.id) && category.subcategories && (
                     <TableRow className="bg-muted/30">
-                      <TableCell colSpan={7} className="p-0">
+                      <TableCell colSpan={8} className="p-0">
                         <div className="p-4 space-y-2">
                           <p className="text-xs font-medium text-muted-foreground">
                             Sous-catégories de {category.name}
@@ -267,11 +366,20 @@ export default function AdminCategoriesPage() {
                                 key={sub.id}
                                 className="flex items-center justify-between p-2 rounded-lg bg-background border"
                               >
-                                <div>
-                                  <p className="text-sm font-medium">{sub.name}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    /{sub.slug}
-                                  </p>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedIds.includes(sub.id)}
+                                    onChange={() => toggleSelect(sub.id)}
+                                    aria-label={`Sélectionner ${sub.name}`}
+                                    className="h-4 w-4 rounded border-input"
+                                  />
+                                  <div>
+                                    <p className="text-sm font-medium">{sub.name}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      /{sub.slug}
+                                    </p>
+                                  </div>
                                 </div>
                                 <div className="flex items-center gap-1">
                                   <Badge variant="outline" className="text-xs">

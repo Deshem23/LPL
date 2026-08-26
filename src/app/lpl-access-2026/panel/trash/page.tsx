@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { RotateCcw, Trash2, ImageIcon, FileText, UserIcon, Clock } from 'lucide-react';
+import { RotateCcw, Trash2, ImageIcon, FileText, UserIcon, Clock, Loader2 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 
 interface TrashItem {
@@ -37,6 +37,11 @@ export default function TrashPage() {
   // Tracks which row currently has a restore/delete request in flight, so
   // its two buttons can be disabled without freezing the whole list.
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Keyed by "type-id" (not just id) - a media row and a user row could
+  // otherwise collide on the same uuid, same reason the list itself uses
+  // `${item.type}-${item.id}` as its React key above.
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const fetchTrash = useCallback(async () => {
     setLoading(true);
@@ -109,6 +114,88 @@ export default function TrashPage() {
     }
   };
 
+  const keyOf = (item: TrashItem) => `${item.type}-${item.id}`;
+
+  const toggleSelect = (key: string) => {
+    setSelectedKeys((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  };
+
+  const toggleSelectAll = (keysOnPage: string[]) => {
+    const allSelected = keysOnPage.every((k) => selectedKeys.includes(k));
+    setSelectedKeys((prev) =>
+      allSelected ? prev.filter((k) => !keysOnPage.includes(k)) : [...new Set([...prev, ...keysOnPage])]
+    );
+  };
+
+  const selectedItems = items.filter((i) => selectedKeys.includes(keyOf(i)));
+
+  const handleBulkRestore = async () => {
+    if (selectedItems.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const results = await Promise.allSettled(
+        selectedItems.map((item) => fetch(`/api/trash/${item.type}/${item.id}`, { method: 'POST' }))
+      );
+      const failures = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
+      const successCount = results.length - failures.length;
+
+      if (successCount > 0) {
+        toast({ title: 'Restauré', description: `${successCount} élément${successCount !== 1 ? 's' : ''} restauré${successCount !== 1 ? 's' : ''}.` });
+      }
+      if (failures.length > 0) {
+        toast({
+          title: failures.length === results.length ? 'Erreur' : 'Restauration partielle',
+          description: `${failures.length} élément${failures.length !== 1 ? 's' : ''} n'${failures.length !== 1 ? 'ont' : 'a'} pas pu être restauré${failures.length !== 1 ? 's' : ''}.`,
+          variant: 'destructive',
+        });
+      }
+
+      setSelectedKeys([]);
+      await fetchTrash();
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkPermanentDelete = async () => {
+    if (selectedItems.length === 0) return;
+    if (
+      !confirm(
+        `Supprimer définitivement ${selectedItems.length} élément${selectedItems.length !== 1 ? 's' : ''} ? Cette action est irréversible et ne peut pas être annulée.`
+      )
+    ) {
+      return;
+    }
+
+    setBulkBusy(true);
+    try {
+      const results = await Promise.allSettled(
+        selectedItems.map((item) => fetch(`/api/trash/${item.type}/${item.id}`, { method: 'DELETE' }))
+      );
+      const failures = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
+      const successCount = results.length - failures.length;
+
+      if (successCount > 0) {
+        toast({
+          title: 'Supprimé définitivement',
+          description: `${successCount} élément${successCount !== 1 ? 's' : ''} supprimé${successCount !== 1 ? 's' : ''}.`,
+        });
+      }
+      if (failures.length > 0) {
+        toast({
+          title: failures.length === results.length ? 'Erreur' : 'Suppression partielle',
+          description: `${failures.length} élément${failures.length !== 1 ? 's' : ''} n'${failures.length !== 1 ? 'ont' : 'a'} pas pu être supprimé${failures.length !== 1 ? 's' : ''} (ex. votre propre compte utilisateur ne peut pas être inclus).`,
+          variant: 'destructive',
+        });
+      }
+
+      setSelectedKeys([]);
+      await fetchTrash();
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const filteredItems = filter === 'all' ? items : items.filter((i) => i.type === filter);
   const counts = {
     all: items.length,
@@ -119,12 +206,38 @@ export default function TrashPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight">Corbeille</h2>
-        <p className="text-muted-foreground">
-          Les éléments supprimés (médias, articles, utilisateurs) restent ici 30 jours avant
-          d&apos;être définitivement effacés. Vous pouvez les restaurer à tout moment avant cette date.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Corbeille</h2>
+          <p className="text-muted-foreground">
+            Les éléments supprimés (médias, articles, utilisateurs) restent ici 30 jours avant
+            d&apos;être définitivement effacés. Vous pouvez les restaurer à tout moment avant cette date.
+          </p>
+        </div>
+        {selectedKeys.length > 0 && (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              disabled={bulkBusy}
+              onClick={handleBulkRestore}
+            >
+              {bulkBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+              Restaurer la sélection ({selectedKeys.length})
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              disabled={bulkBusy}
+              onClick={handleBulkPermanentDelete}
+            >
+              {bulkBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              Supprimer la sélection ({selectedKeys.length})
+            </Button>
+          </div>
+        )}
       </div>
 
       <Card>
@@ -133,7 +246,7 @@ export default function TrashPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
+            <Tabs value={filter} onValueChange={(v) => { setFilter(v as typeof filter); setSelectedKeys([]); }}>
               <TabsList>
                 <TabsTrigger value="all">Tous ({counts.all})</TabsTrigger>
                 <TabsTrigger value="media">Médias ({counts.media})</TabsTrigger>
@@ -152,16 +265,34 @@ export default function TrashPage() {
                 <p className="text-sm">La corbeille est vide.</p>
               </div>
             ) : (
-              <div className="divide-y rounded-lg border">
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={filteredItems.length > 0 && filteredItems.every((i) => selectedKeys.includes(keyOf(i)))}
+                    onChange={() => toggleSelectAll(filteredItems.map(keyOf))}
+                    className="h-4 w-4 rounded border-input"
+                  />
+                  Tout sélectionner
+                </label>
+                <div className="divide-y rounded-lg border">
                 {filteredItems.map((item) => {
                   const Icon = TYPE_ICON[item.type];
                   const isBusy = busyId === item.id;
+                  const key = keyOf(item);
                   return (
                     <div
-                      key={`${item.type}-${item.id}`}
+                      key={key}
                       className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="flex min-w-0 items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedKeys.includes(key)}
+                          onChange={() => toggleSelect(key)}
+                          aria-label={`Sélectionner ${item.title}`}
+                          className="h-4 w-4 flex-shrink-0 rounded border-input"
+                        />
                         <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
                           {item.thumbnail ? (
                             <Image
@@ -217,6 +348,7 @@ export default function TrashPage() {
                     </div>
                   );
                 })}
+                </div>
               </div>
             )}
           </div>

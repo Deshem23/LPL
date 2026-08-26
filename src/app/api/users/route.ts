@@ -177,6 +177,17 @@ export async function DELETE(request: Request) {
       );
     }
 
+    // Same guard as DELETE /api/users/[id] - this query-param variant
+    // (used by the users admin page's row menu and now its bulk-delete
+    // action too) never had it, so selecting yourself among several
+    // users to bulk-delete would have signed you out mid-request.
+    if (userId === actor.id) {
+      return NextResponse.json(
+        { error: 'Vous ne pouvez pas supprimer votre propre compte.' },
+        { status: 400 }
+      );
+    }
+
     const existing = await getUserById(userId);
 
     const result = await deleteUser(userId);

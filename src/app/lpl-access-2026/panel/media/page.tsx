@@ -6,7 +6,7 @@ import { MediaUploadDialog } from '@/components/admin/media/media-upload-dialog'
 import { MediaFilter } from '@/components/admin/media/media-filter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Trash2, Loader2 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 
 const PAGE_SIZE = 20;
@@ -33,6 +33,8 @@ export default function AdminMediaPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const fetchMedia = useCallback(async () => {
     setLoading(true);
@@ -70,6 +72,60 @@ export default function AdminMediaPage() {
   const handleFilter = (newFilters: { type: string; search: string }) => {
     setPage(1);
     setFilters(newFilters);
+    setSelectedIds([]);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+  };
+
+  const toggleSelectAll = (idsOnPage: string[]) => {
+    const allSelected = idsOnPage.every((id) => selectedIds.includes(id));
+    setSelectedIds((prev) =>
+      allSelected ? prev.filter((id) => !idsOnPage.includes(id)) : [...new Set([...prev, ...idsOnPage])]
+    );
+  };
+
+  // Same soft-delete-to-trash path as the single-item delete (DELETE
+  // /api/media/[id] only stamps deleted_at - see that route), just
+  // fired once per selected item.
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (
+      !confirm(
+        `Supprimer ${selectedIds.length} fichier${selectedIds.length !== 1 ? 's' : ''} sélectionné${selectedIds.length !== 1 ? 's' : ''} ? Ils seront déplacés vers la corbeille.`
+      )
+    ) {
+      return;
+    }
+
+    setBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        selectedIds.map((id) => fetch(`/api/media/${id}`, { method: 'DELETE' }))
+      );
+      const failures = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
+      const successCount = results.length - failures.length;
+
+      if (successCount > 0) {
+        toast({
+          title: 'Fichiers supprimés',
+          description: `${successCount} fichier${successCount !== 1 ? 's' : ''} déplacé${successCount !== 1 ? 's' : ''} vers la corbeille.`,
+        });
+      }
+      if (failures.length > 0) {
+        toast({
+          title: failures.length === results.length ? 'Erreur' : 'Suppression partielle',
+          description: `${failures.length} fichier${failures.length !== 1 ? 's' : ''} n'${failures.length !== 1 ? 'ont' : 'a'} pas pu être supprimé${failures.length !== 1 ? 's' : ''}.`,
+          variant: 'destructive',
+        });
+      }
+
+      setSelectedIds([]);
+      await fetchMedia();
+    } finally {
+      setBulkDeleting(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -100,12 +156,25 @@ export default function AdminMediaPage() {
             Gérez vos images, vidéos et fichiers audio.
           </p>
         </div>
-        <MediaUploadDialog onUploadComplete={() => fetchMedia()}>
-          <Button className="gap-2">
-            <Plus className="h-4 w-4" />
-            Ajouter un média
-          </Button>
-        </MediaUploadDialog>
+        <div className="flex items-center gap-2">
+          {selectedIds.length > 0 && (
+            <Button
+              variant="outline"
+              className="gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              disabled={bulkDeleting}
+              onClick={handleBulkDelete}
+            >
+              {bulkDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Supprimer la sélection ({selectedIds.length})
+            </Button>
+          )}
+          <MediaUploadDialog onUploadComplete={() => fetchMedia()}>
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" />
+              Ajouter un média
+            </Button>
+          </MediaUploadDialog>
+        </div>
       </div>
 
       <Card>
@@ -115,13 +184,28 @@ export default function AdminMediaPage() {
         <CardContent>
           <div className="space-y-4">
             <MediaFilter onFilter={handleFilter} initialType={filters.type} initialSearch={filters.search} />
-            <div className="text-sm text-muted-foreground">
-              {total} fichier{total !== 1 ? 's' : ''} trouvé{total !== 1 ? 's' : ''}
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>
+                {total} fichier{total !== 1 ? 's' : ''} trouvé{total !== 1 ? 's' : ''}
+              </span>
+              {media.length > 0 && (
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={media.every((m) => selectedIds.includes(m.id))}
+                    onChange={() => toggleSelectAll(media.map((m) => m.id))}
+                    className="h-4 w-4 rounded border-input"
+                  />
+                  Tout sélectionner sur cette page
+                </label>
+              )}
             </div>
             <MediaGrid
               media={media}
               loading={loading}
               onDelete={handleDelete}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelect}
             />
             {totalPages > 1 && (
               <div className="flex items-center justify-between border-t pt-4">

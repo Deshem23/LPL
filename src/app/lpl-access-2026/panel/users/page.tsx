@@ -121,6 +121,8 @@ export default function AdminUsersPage() {
   });
   const [newRole, setNewRole] = useState('contributor');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -188,6 +190,62 @@ export default function AdminUsersPage() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+  };
+
+  const toggleSelectAll = (idsOnPage: string[]) => {
+    const allSelected = idsOnPage.every((id) => selectedIds.includes(id));
+    setSelectedIds((prev) =>
+      allSelected ? prev.filter((id) => !idsOnPage.includes(id)) : [...new Set([...prev, ...idsOnPage])]
+    );
+  };
+
+  // Deletes every selected user (each still goes through DELETE
+  // /api/users?id=..., same soft-delete-to-trash path as the single "..."
+  // menu action - restorable from the Corbeille for 30 days). Uses
+  // allSettled rather than all() so one failure (e.g. trying to include
+  // your own account, which the API now rejects) doesn't stop the rest
+  // of the selection from being deleted.
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (
+      !confirm(
+        `Supprimer ${selectedIds.length} utilisateur${selectedIds.length !== 1 ? 's' : ''} sélectionné${selectedIds.length !== 1 ? 's' : ''} ? Ils seront déplacés vers la corbeille.`
+      )
+    ) {
+      return;
+    }
+
+    setBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        selectedIds.map((id) => fetch(`/api/users?id=${id}`, { method: 'DELETE' }))
+      );
+      const failures = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
+      const successCount = results.length - failures.length;
+
+      if (successCount > 0) {
+        toast({
+          title: 'Utilisateurs supprimés',
+          description: `${successCount} utilisateur${successCount !== 1 ? 's' : ''} déplacé${successCount !== 1 ? 's' : ''} vers la corbeille.`,
+        });
+      }
+      if (failures.length > 0) {
+        toast({
+          title: failures.length === results.length ? 'Erreur' : 'Suppression partielle',
+          description: `${failures.length} utilisateur${failures.length !== 1 ? 's' : ''} n'${failures.length !== 1 ? 'ont' : 'a'} pas pu être supprimé${failures.length !== 1 ? 's' : ''} (ex. votre propre compte ne peut pas être inclus).`,
+          variant: 'destructive',
+        });
+      }
+
+      setSelectedIds([]);
+      await loadUsers();
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -387,10 +445,23 @@ export default function AdminUsersPage() {
           <h1 className="text-3xl font-bold">Gestion des utilisateurs</h1>
           <p className="text-muted-foreground">Gérez les utilisateurs, les rôles et les permissions</p>
         </div>
-        <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
-          <UserPlus className="h-4 w-4" />
-          Ajouter un utilisateur
-        </Button>
+        <div className="flex items-center gap-2">
+          {selectedIds.length > 0 && (
+            <Button
+              variant="outline"
+              className="gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              disabled={bulkDeleting}
+              onClick={handleBulkDelete}
+            >
+              {bulkDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Supprimer la sélection ({selectedIds.length})
+            </Button>
+          )}
+          <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
+            <UserPlus className="h-4 w-4" />
+            Ajouter un utilisateur
+          </Button>
+        </div>
       </div>
 
       {/* Stats - NOW WITH 5 CARDS */}
@@ -502,6 +573,15 @@ export default function AdminUsersPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <input
+                    type="checkbox"
+                    checked={filteredUsers.length > 0 && filteredUsers.every((u) => selectedIds.includes(u.id))}
+                    onChange={() => toggleSelectAll(filteredUsers.map((u) => u.id))}
+                    aria-label="Tout sélectionner"
+                    className="h-4 w-4 rounded border-input"
+                  />
+                </TableHead>
                 <TableHead>Utilisateur</TableHead>
                 <TableHead>Rôle</TableHead>
                 <TableHead>Statut</TableHead>
@@ -513,13 +593,22 @@ export default function AdminUsersPage() {
             <TableBody>
               {filteredUsers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                     Aucun utilisateur trouvé. Créez votre premier utilisateur !
                   </TableCell>
                 </TableRow>
               ) : (
                 filteredUsers.map((user) => (
                   <TableRow key={user.id}>
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(user.id)}
+                        onChange={() => toggleSelect(user.id)}
+                        aria-label={`Sélectionner ${user.name}`}
+                        className="h-4 w-4 rounded border-input"
+                      />
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">

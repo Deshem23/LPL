@@ -49,9 +49,14 @@ interface MediaGridProps {
   onDelete?: (id: string) => void;
   onUpdate?: (id: string, data: Partial<MediaItem>) => void;
   loading?: boolean;
+  /** Bulk-selection is optional, same pattern as AuditTable - pass both
+   *  together to show a checkbox on every card (see the Media Library
+   *  page for how it's wired to a bulk "Supprimer la sélection" action). */
+  selectedIds?: string[];
+  onToggleSelect?: (id: string) => void;
 }
 
-export function MediaGrid({ media, onDelete, onUpdate, loading }: MediaGridProps) {
+export function MediaGrid({ media, onDelete, onUpdate, loading, selectedIds, onToggleSelect }: MediaGridProps) {
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -158,8 +163,20 @@ export function MediaGrid({ media, onDelete, onUpdate, loading }: MediaGridProps
                     <ExternalLink className="h-4 w-4" />
                   </Button>
                 </div>
+                {selectedIds && onToggleSelect && (
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(item.id)}
+                    onChange={() => onToggleSelect(item.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Sélectionner ${item.title}`}
+                    className="absolute left-2 top-2 z-10 h-4 w-4 rounded border-input bg-white"
+                  />
+                )}
                 <Badge
-                  className={`absolute left-2 top-2 text-white ${getTypeColor(item.type)}`}
+                  className={`absolute text-white ${getTypeColor(item.type)} ${
+                    selectedIds && onToggleSelect ? 'left-2 top-9' : 'left-2 top-2'
+                  }`}
                 >
                   {getTypeLabel(item.type)}
                 </Badge>
