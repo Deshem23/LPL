@@ -56,6 +56,14 @@ export async function searchArticlesInDb(params: {
       { count: 'exact' }
     )
     .eq('status', params.status || 'published')
+    // Soft-deleted (trashed) articles only ever get their deleted_at
+    // stamped - status is left untouched (see deleteArticle() in
+    // article-service.ts) - so a trashed article that was published
+    // before being trashed still has status='published' and, without
+    // this filter, kept showing up in search results indefinitely. Every
+    // other public-facing query in article-service.ts already excludes
+    // these; this one was the one place that didn't.
+    .is('deleted_at', null)
     .or(`title.ilike.%${q}%,excerpt.ilike.%${q}%,content.ilike.%${q}%`)
     .order('published_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
