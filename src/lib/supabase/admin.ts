@@ -60,6 +60,26 @@ export function createAdminClient() {
       persistSession: false,
       detectSessionInUrl: false,
     },
+    global: {
+      // Force every request this client makes through Next's patched
+      // server-side fetch() with cache explicitly disabled. Route segment
+      // config (export const dynamic = 'force-dynamic') is *supposed* to
+      // make this the default for every fetch a dynamic route makes, but
+      // that's a route-level default - it can still be silently
+      // overridden by whatever cache option ends up on the actual fetch
+      // call, and this client (and therefore every query in every
+      // *-service.ts file) is shared across route handlers and Server
+      // Components with very different caching configs (e.g.
+      // [locale]/layout.tsx sets revalidate: 30). Rather than rely on
+      // every call site getting its segment config exactly right, pin
+      // 'no-store' here once, at the one place all of those queries
+      // actually go out over the network - this is what actually fixed
+      // publicly-visible ads (and, by the same mechanism, potentially
+      // other admin-deleted content) continuing to appear on public
+      // pages long after being deleted, because a stale cached read had
+      // gotten stuck being served instead of hitting the database.
+      fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }),
+    },
   });
   return cachedAdminClient;
 }

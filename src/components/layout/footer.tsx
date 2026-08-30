@@ -55,8 +55,7 @@ export function Footer({ locale }: FooterProps) {
               </div>
             </div>
             <p className="text-white/70 text-xs sm:text-sm max-w-sm leading-relaxed">
-              Votre source de confiance pour l&apos;actualité locale, internationale et de niche.
-              Nous fournissons un journalisme précis, opportun et perspicace.
+              Votre source de confiance pour l&apos;actualité locale, et internationale.
             </p>
             <div className="flex flex-wrap gap-2.5 sm:gap-3 pt-1 sm:pt-2">
               {SOCIAL_LINKS.map((social) => (

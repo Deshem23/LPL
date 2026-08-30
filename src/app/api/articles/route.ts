@@ -77,6 +77,21 @@ export async function POST(request: Request) {
       body.author_id = user.id;
     }
 
+    // Same reasoning as the block above: the form (article-form.tsx,
+    // allowedStatuses) already hides statuses a role shouldn't be able to
+    // set, but that's a client-side-only restriction - a direct POST can
+    // send any status string. Writers can publish their own articles
+    // directly (canPublish in permissions.ts) but not archive them;
+    // contributors can only ever land on draft/review - they submit for
+    // review, they don't publish. Deleting the field (rather than
+    // forcing a specific value) lets createArticle's own `status ||
+    // 'draft'` default apply, same pattern as the fields above.
+    if (role === 'writer' && !['draft', 'review', 'scheduled', 'published'].includes(body.status)) {
+      delete body.status;
+    } else if (role === 'contributor' && !['draft', 'review'].includes(body.status)) {
+      delete body.status;
+    }
+
     if (body.status === 'published') {
       body.published_at = new Date().toISOString();
     }

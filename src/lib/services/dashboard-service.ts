@@ -47,6 +47,12 @@ export async function getAuthorDashboardData(authorId: string): Promise<AuthorDa
     .from('articles')
     .select('id, title, slug, status, view_count, created_at, published_at')
     .eq('author_id', authorId)
+    // Same bug as search-service.ts / getAuthorProfile() in
+    // user-service.ts: soft-deleting an article only stamps deleted_at,
+    // it never touches status, so a trashed article kept counting toward
+    // this writer/contributor's own "Total articles" (and inflating
+    // their draft/review/published/etc breakdown) indefinitely.
+    .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -138,6 +144,11 @@ export async function getEditorDashboardData(): Promise<EditorDashboardData> {
     supabase
       .from('articles')
       .select('id, title, status, view_count, created_at, updated_at, published_at, author:author_id ( name )')
+      // Same recurring bug as the writer/contributor dashboard above and
+      // search-service.ts: without this, a trashed article (deleted_at
+      // set, status left untouched) kept inflating this site-wide
+      // oversight view's totals, approval rate and view count forever.
+      .is('deleted_at', null)
       .order('updated_at', { ascending: false }),
     supabase.from('media').select('*', { count: 'exact', head: true }),
     supabase.from('ads').select('*', { count: 'exact', head: true }).eq('status', 'active'),

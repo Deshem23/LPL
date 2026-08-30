@@ -23,6 +23,11 @@ export interface User {
    *  below) - null/absent means active. Every normal getter below filters
    *  this out; only getTrashedUsers() returns rows where it's set. */
   deleted_at?: string | null;
+  /** How many non-deleted articles (any status - draft through archived)
+   *  this user is the author of. Only populated by getAllUsers() (the
+   *  admin Users list's "Articles" column) - every other getter below
+   *  leaves this undefined. */
+  articles_count?: number;
 }
 
 export async function getAllUsers(): Promise<User[]> {
@@ -39,7 +44,37 @@ export async function getAllUsers(): Promise<User[]> {
     return [];
   }
 
-  return data || [];
+  const users = data || [];
+  if (users.length === 0) return users;
+
+  // Article count per user, for the admin Users list's "Articles" column.
+  // This used to be an `articles_count` field the UI already rendered
+  // (`{user.articles_count || 0}`) but that nothing ever populated - so
+  // every user showed 0 regardless of how many articles they'd actually
+  // written, published or not. Fetch every non-deleted article's
+  // author_id in one query and tally client-side instead of one COUNT
+  // query per user (would be N+1 on a page that already lists everyone).
+  // Counts every status (draft through archived), not just published -
+  // this is the admin's own view of how much content someone has authored
+  // in total, unlike the public author page's totalArticles (published
+  // only, see getAuthorProfile below).
+  const { data: authorRows, error: articlesError } = await supabase
+    .from('articles')
+    .select('author_id')
+    .is('deleted_at', null);
+
+  if (articlesError) {
+    console.error('❌ Error fetching article counts for users list:', articlesError);
+    return users;
+  }
+
+  const countsByAuthor = new Map<string, number>();
+  for (const row of authorRows || []) {
+    if (!row.author_id) continue;
+    countsByAuthor.set(row.author_id, (countsByAuthor.get(row.author_id) || 0) + 1);
+  }
+
+  return users.map((user) => ({ ...user, articles_count: countsByAuthor.get(user.id) || 0 }));
 }
 
 /** Users currently in the trash (deleted_at set), newest-deleted first. */

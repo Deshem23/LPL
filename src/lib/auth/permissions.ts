@@ -37,7 +37,14 @@ export const permissions = {
     canEditUser: false,
     canViewUsers: false,
     canManageRoles: false,
-    canPublish: false,
+    // Writers can publish their own articles directly, without going
+    // through an editor's review queue first - unlike contributors, a
+    // writer's submissions were already trusted enough to auto-populate
+    // their author_id (see the POST/PUT /api/articles comments), so
+    // requiring an editor to rubber-stamp every one of their own articles
+    // before it goes live added a review step without adding a check
+    // (they could already set every other field on their own article).
+    canPublish: true,
     canDeleteArticle: false,
     canEditArticle: true,
     canManageMedia: false,

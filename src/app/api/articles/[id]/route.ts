@@ -57,6 +57,20 @@ export async function PUT(
       delete body.is_suggestion;
     }
 
+    // Same enforcement as POST /api/articles: writers can publish their
+    // own articles directly (canPublish in permissions.ts) but not
+    // archive them; contributors can only ever land on draft/review.
+    // Deleting body.status (rather than forcing a value) means
+    // updateArticle simply won't touch the column, leaving whatever
+    // status the article already had - e.g. a contributor can't use this
+    // to un-publish an article an editor already approved, and can't use
+    // it to publish one either.
+    if (role === 'writer' && body.status !== undefined && !['draft', 'review', 'scheduled', 'published'].includes(body.status)) {
+      delete body.status;
+    } else if (role === 'contributor' && body.status !== undefined && !['draft', 'review'].includes(body.status)) {
+      delete body.status;
+    }
+
     const result = await updateArticle(params.id, body);
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 400 });

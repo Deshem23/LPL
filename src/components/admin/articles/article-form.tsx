@@ -85,6 +85,27 @@ export function ArticleForm({ article, onSuccess, onCancel }: ArticleFormProps) 
   const canAssignAuthor = currentRole === 'admin' || currentRole === 'editor';
   const canAssignEditorialFlags = currentRole === 'admin' || currentRole === 'editor';
 
+  // Which statuses this role is allowed to set from this form. The old
+  // dropdown always rendered all five options regardless of role, and
+  // neither POST /api/articles nor PUT /api/articles/[id] checked
+  // body.status at all - so a contributor (who should only ever be able
+  // to submit for review) could pick "Publié" and it would go straight
+  // through, same as a writer could. Contributors stay limited to
+  // draft/review (matching "submit for review, don't publish directly").
+  // Writers can now publish their own articles directly (canPublish in
+  // permissions.ts), but archiving is left as an admin/editor-only
+  // curation action since nothing asked for writers to have it. Admins
+  // and editors keep every status, including the archived option that
+  // was already available to them. This list is enforced again
+  // server-side in the API routes below - a hidden option here only
+  // stops the UI from offering it, not a direct API call.
+  const allowedStatuses =
+    currentRole === 'admin' || currentRole === 'editor'
+      ? ['draft', 'review', 'scheduled', 'published', 'archived']
+      : currentRole === 'writer'
+      ? ['draft', 'review', 'scheduled', 'published']
+      : ['draft', 'review'];
+
   const [formData, setFormData] = useState({
     title: article?.title || '',
     excerpt: article?.excerpt || '',
@@ -308,17 +329,36 @@ export function ArticleForm({ article, onSuccess, onCancel }: ArticleFormProps) 
                 <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="draft">Brouillon</SelectItem>
-                    <SelectItem value="review">En relecture</SelectItem>
-                    <SelectItem value="scheduled">Programmé</SelectItem>
-                    <SelectItem value="published">Publié</SelectItem>
+                    {allowedStatuses.includes('draft') && <SelectItem value="draft">Brouillon</SelectItem>}
+                    {allowedStatuses.includes('review') && <SelectItem value="review">En relecture</SelectItem>}
+                    {allowedStatuses.includes('scheduled') && <SelectItem value="scheduled">Programmé</SelectItem>}
+                    {allowedStatuses.includes('published') && <SelectItem value="published">Publié</SelectItem>}
                     {/* The DB column and the admin article list (see its
                         statusLabels/statusColors/filter) have supported
                         "archived" all along - this dropdown was just
                         never given the option to actually set it, so
                         there was no way to archive an article from the
-                        editor. */}
-                    <SelectItem value="archived">Archivé</SelectItem>
+                        editor. Admin/editor only, see allowedStatuses above. */}
+                    {allowedStatuses.includes('archived') && <SelectItem value="archived">Archivé</SelectItem>}
+                    {/* formData.status can still legitimately hold a value
+                        outside this role's allowedStatuses - e.g. a
+                        contributor's own submission that an editor has
+                        already approved to "published". Render that
+                        current value too (disabled) so the trigger
+                        doesn't show a blank/broken label; onValueChange
+                        never offers it as a choice since there's no
+                        SelectItem for it above other than this one. */}
+                    {!allowedStatuses.includes(formData.status) && (
+                      <SelectItem value={formData.status} disabled>
+                        {({
+                          draft: 'Brouillon',
+                          review: 'En relecture',
+                          scheduled: 'Programmé',
+                          published: 'Publié',
+                          archived: 'Archivé',
+                        } as Record<string, string>)[formData.status] || formData.status}
+                      </SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>

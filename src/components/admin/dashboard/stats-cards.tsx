@@ -31,6 +31,20 @@ export function StatsCards() {
         // reflect the current DB state, never a stale snapshot.
         const response = await fetch(`/api/admin/stats?t=${Date.now()}`, { cache: 'no-store' });
         const data = await response.json();
+        // /api/admin/stats requires canViewAnalytics (admin/editor only -
+        // see requirePermission there), so a writer/contributor hitting
+        // this shared dashboard got back `{error: 'Forbidden'}` instead
+        // of a stats object. That response was still valid JSON, so it
+        // sailed past the try/catch below and got set as-is; every card
+        // read `undefined` off it, and stats.totalViews.toLocaleString()
+        // a few lines down threw on the very first render, crashing the
+        // whole dashboard for any non-admin/editor role that ended up on
+        // this page. Treat a non-ok response the same as a network
+        // failure - fall through to the zeroed default below instead of
+        // rendering it.
+        if (!response.ok) {
+          throw new Error(data?.error || `Request failed with status ${response.status}`);
+        }
         setStats(data);
       } catch (error) {
         console.error('Failed to fetch stats:', error);
@@ -116,7 +130,10 @@ export function StatsCards() {
     },
     {
       title: 'Vues totales',
-      value: stats.totalViews.toLocaleString(),
+      // Defensive fallback even though the fetch above now always sets
+      // a real number here - a bad/incomplete API response should show
+      // "0" instead of crashing the entire dashboard again.
+      value: (stats.totalViews ?? 0).toLocaleString(),
       icon: Eye,
       color: 'bg-orange-500',
     },
